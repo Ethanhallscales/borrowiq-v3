@@ -512,6 +512,16 @@ export default function Screen10ResultsA({ quiz }: Props) {
     return () => clearTimeout(t);
   }, []);
 
+  // Savings gap: how much more cash they need to afford a $500k property
+  const { payable: dutyAt500k } = useMemo(
+    () => calculateStampDuty(state, 500_000, true, isNewBuild),
+    [state, isNewBuild],
+  );
+  const minCashNeeded500k = 500_000 * 0.05 + dutyAt500k + CONV;
+  const savingsGap        = Math.max(0, Math.round(minCashNeeded500k - deposit));
+  const displayIncome     = formatCurrency(quiz.annualIncome ?? 0);
+  const displaySavings    = formatCurrency(deposit);
+
   const bd = useMemo(() =>
     computeAtPrice(selectedPrice, deposit, capacity, grossIncome, state, isCouple, isSingleParent, isNewBuild),
     [selectedPrice, deposit, capacity, grossIncome, state, isCouple, isSingleParent, isNewBuild],
@@ -983,38 +993,82 @@ export default function Screen10ResultsA({ quiz }: Props) {
                 </div>
               </>
             ) : (
-              <>
-                <div className="rounded-2xl px-5 py-5 text-center"
-                  style={{ background: "rgba(245,158,11,0.07)", border: "2px solid rgba(245,158,11,0.45)" }}>
-                  <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.4rem",
-                    color: "#f59e0b", letterSpacing: "0.04em" }}>
-                    Get Your Custom Buying Plan
+              <div className="rounded-2xl overflow-hidden"
+                style={{
+                  background: "rgba(4,30,58,0.85)",
+                  border: "1.5px solid rgba(245,158,11,0.5)",
+                  boxShadow: "0 0 48px -16px rgba(245,158,11,0.35), inset 0 1px 0 rgba(245,158,11,0.12)",
+                }}>
+                {/* Header band */}
+                <div className="px-5 pt-5 pb-4"
+                  style={{ borderBottom: "1px solid rgba(245,158,11,0.18)" }}>
+                  <p style={{
+                    fontFamily: "var(--font-bebas-neue)", fontSize: "1.45rem",
+                    color: "#fbbf24", letterSpacing: "0.04em", lineHeight: 1.15,
+                  }}>
+                    Your First Home Buyer Accelerator — $27
                   </p>
-                  <p className="mt-1 mb-4" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem",
-                    color: "rgba(230,251,255,0.5)", lineHeight: 1.5 }}>
-                    Includes personalised savings roadmap PDF and income tracker tool — $27
+                  <p className="mt-1" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.75rem",
+                    color: "rgba(245,158,11,0.6)" }}>
+                    Everything you need to go from &apos;not yet&apos; to pre-approved
                   </p>
+                </div>
+
+                {/* Checklist */}
+                <div className="px-5 py-4 flex flex-col gap-3">
+                  {[
+                    `Your personalised savings target — exactly how much to save each week based on your income`,
+                    `Custom budget tracker spreadsheet built around your income of ${displayIncome}`,
+                    `Government scheme eligibility breakdown for ${state} with application guides`,
+                    `Step-by-step pre-approval checklist so you're ready the moment your numbers line up`,
+                    `Priority broker callback — skip the queue when you're ready to buy`,
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-start gap-3">
+                      <span style={{
+                        fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem",
+                        color: "#fbbf24", fontWeight: 700, lineHeight: 1.5, flexShrink: 0,
+                      }}>✓</span>
+                      <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.82rem",
+                        color: "rgba(230,251,255,0.75)", lineHeight: 1.5 }}>
+                        {item}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Personalisation line */}
+                <div className="mx-5 mb-4 rounded-xl px-4 py-3"
+                  style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                  <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.76rem",
+                    color: "rgba(245,158,11,0.8)", lineHeight: 1.5 }}>
+                    Built specifically for someone earning {displayIncome} with {displaySavings} in savings in {state}
+                  </p>
+                </div>
+
+                {/* CTA */}
+                <div className="px-5 pb-5">
                   <a href={STRIPE_URL} target="_blank" rel="noreferrer"
-                    className="block w-full rounded-xl py-3 text-base font-semibold text-center"
-                    style={{ background: "linear-gradient(135deg,#b45309,#f59e0b)",
-                      color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
-                    Get Your Plan — $27
+                    className="block w-full rounded-xl py-4 text-base font-bold text-center"
+                    style={{
+                      background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
+                      color: "#020B18", fontFamily: "var(--font-dm-sans)",
+                      boxShadow: "0 0 28px -6px rgba(245,158,11,0.55)",
+                      letterSpacing: "0.01em",
+                    }}>
+                    Get My Custom Plan — $27
                   </a>
+                  <div className="mt-3 flex items-center justify-center gap-4">
+                    <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.7rem",
+                      color: "rgba(230,251,255,0.35)" }}>
+                      ⚡ Instant delivery to your email
+                    </p>
+                    <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.7rem",
+                      color: "rgba(230,251,255,0.35)" }}>
+                      ✓ 30-day money-back guarantee
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-2xl px-5 py-4 text-center"
-                  style={{ background: "rgba(4,30,58,0.65)", border: "1px solid rgba(10,61,107,0.55)" }}>
-                  <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem",
-                    color: "rgba(230,251,255,0.55)", lineHeight: 1.5 }}>
-                    Want to talk strategy? Book a free chat with a broker
-                  </p>
-                  <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
-                    className="mt-3 block w-full rounded-xl py-3 text-sm font-semibold text-center"
-                    style={{ background: "rgba(0,194,255,0.1)", border: "1px solid rgba(0,194,255,0.3)",
-                      color: "#00C2FF", fontFamily: "var(--font-dm-sans)" }}>
-                    Book a Free Chat →
-                  </a>
-                </div>
-              </>
+              </div>
             )}
           </motion.div>
 
@@ -1048,15 +1102,21 @@ export default function Screen10ResultsA({ quiz }: Props) {
                 color: qualified ? "#22c55e" : "#f59e0b", letterSpacing: "0.04em", marginBottom: 4 }}>
                 {qualified
                   ? "You're in a solid position to buy — book a free 15-minute call with our team"
-                  : "You're closer than you think — get a custom plan to reach your buying goal"}
+                  : `You're ${formatCurrency(savingsGap)} away from owning your first home`}
               </p>
+              {!qualified && (
+                <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem",
+                  color: "rgba(230,251,255,0.65)", marginBottom: 6 }}>
+                  Get your personalised buying roadmap
+                </p>
+              )}
               <a href={qualified ? CALENDLY_URL : STRIPE_URL} target="_blank" rel="noreferrer"
                 className="mt-2 block w-full rounded-xl py-3 text-sm font-semibold text-center"
                 style={{
                   background: qualified ? "linear-gradient(135deg,#0076BE,#00C2FF)" : "linear-gradient(135deg,#b45309,#f59e0b)",
                   color: "#020B18", fontFamily: "var(--font-dm-sans)",
                 }}>
-                {qualified ? "Book Now →" : "Get Your Plan — $27"}
+                {qualified ? "Book Now →" : "Get My Roadmap — $27"}
               </a>
             </div>
             <button type="button" onClick={() => setBannerDismissed(true)}
