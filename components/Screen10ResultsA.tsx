@@ -17,6 +17,9 @@ const CONV      = 2_800;   // conveyancing + inspections
 const STEP      = 5_000;
 const SLIDER_MIN = 200_000;
 
+const CALENDLY_URL = process.env.NEXT_PUBLIC_CALENDLY_URL ?? "#";
+const STRIPE_URL   = process.env.NEXT_PUBLIC_STRIPE_LINK  ?? "#";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Props { quiz: QuizData; }
@@ -499,6 +502,16 @@ export default function Screen10ResultsA({ quiz }: Props) {
   const [selectedPrice, setSelectedPrice] = useState(smartDefault.price);
   const [hasDragged, setHasDragged]       = useState(false);
 
+  // Qualification-based banner
+  const qualified                             = results.qualified;
+  const [showBanner, setShowBanner]           = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setShowBanner(true), 20_000);
+    return () => clearTimeout(t);
+  }, []);
+
   const bd = useMemo(() =>
     computeAtPrice(selectedPrice, deposit, capacity, grossIncome, state, isCouple, isSingleParent, isNewBuild),
     [selectedPrice, deposit, capacity, grossIncome, state, isCouple, isSingleParent, isNewBuild],
@@ -548,6 +561,7 @@ export default function Screen10ResultsA({ quiz }: Props) {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <div className="relative flex h-dvh w-full flex-col overflow-hidden" style={{ background: "#020B18" }}>
       <BlobBackground intensity={0.4} />
       <div className="absolute inset-0 overflow-y-auto">
@@ -931,72 +945,80 @@ export default function Screen10ResultsA({ quiz }: Props) {
             </div>
           </motion.div>
 
-          {/* ── SECTION 7 — CTA ───────────────────────────────────────────────── */}
-          <motion.div
+          {/* ── SECTION 7 — Permanent CTA cards (qualification-based) ────────────── */}
+          <motion.div className="flex flex-col gap-3"
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55, duration: 0.4 }}>
-            {currentAffordable ? (
-              <div className="rounded-2xl px-5 py-5 text-center"
-                style={{ background: "rgba(34,197,94,0.08)", border: "2px solid rgba(34,197,94,0.45)",
-                  boxShadow: "0 0 36px -12px rgba(34,197,94,0.4)" }}>
-                <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.5rem",
-                  color: "#22c55e", letterSpacing: "0.04em" }}>
-                  ✓ You&apos;re Ready to Buy
-                </p>
-                <p className="mt-1 mb-4" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem",
-                  color: "rgba(230,251,255,0.45)", lineHeight: 1.5 }}>
-                  {bd.schemeActive
-                    ? `Government schemes make your savings go further. Book a free call to lock in your strategy.`
-                    : bd.lmi === 0
-                    ? "Strong deposit position with zero LMI. Book a free call to get pre-approved."
-                    : `At ${formatCurrency(selectedPrice)} you have a clear path to ownership. Book a free call to get started.`}
-                </p>
-                <button className="w-full rounded-xl py-3.5 text-base font-bold"
-                  style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)",
-                    color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
-                  Book a Free Call →
-                </button>
-              </div>
-            ) : anyPriceAffordable ? (
-              <div className="rounded-2xl px-5 py-5 text-center"
-                style={{ background: "rgba(245,158,11,0.07)", border: "1.5px solid rgba(245,158,11,0.35)" }}>
-                <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.3rem",
-                  color: "#f59e0b", letterSpacing: "0.04em" }}>
-                  Adjust the price above to find your entry point
-                </p>
-                <p className="mt-1 mb-4" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.78rem",
-                  color: "rgba(245,158,11,0.6)", lineHeight: 1.5 }}>
-                  {incomeQualAny
-                    ? `Drag below ${formatCurrency(schemeCap)} to unlock scheme benefits and a positive cash position.`
-                    : "Use the slider to find a price where your deposit covers all costs."}
-                </p>
-                <button className="w-full rounded-xl py-3 text-sm font-semibold"
-                  style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.4)",
-                    color: "#f59e0b", fontFamily: "var(--font-dm-sans)" }}>
-                  Book a Free Strategy Call →
-                </button>
-              </div>
+            {qualified ? (
+              <>
+                <div className="rounded-2xl px-5 py-5 text-center"
+                  style={{ background: "rgba(34,197,94,0.08)", border: "2px solid rgba(34,197,94,0.5)",
+                    boxShadow: "0 0 36px -12px rgba(34,197,94,0.4)" }}>
+                  <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.5rem",
+                    color: "#22c55e", letterSpacing: "0.04em" }}>
+                    Book a Free Call
+                  </p>
+                  <p className="mt-1 mb-4" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem",
+                    color: "rgba(230,251,255,0.45)", lineHeight: 1.5 }}>
+                    You&apos;re in a solid position to buy — book a free 15-minute call with our team.
+                  </p>
+                  <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
+                    className="block w-full rounded-xl py-3.5 text-base font-bold text-center"
+                    style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)",
+                      color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
+                    Book Now →
+                  </a>
+                </div>
+                <div className="rounded-2xl px-5 py-4 text-center"
+                  style={{ background: "rgba(4,30,58,0.65)", border: "1px solid rgba(10,61,107,0.55)" }}>
+                  <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem",
+                    color: "rgba(230,251,255,0.65)", lineHeight: 1.5 }}>
+                    Want to accelerate your journey? Get a custom savings plan PDF and income tracker tool
+                  </p>
+                  <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+                    className="mt-3 block w-full rounded-xl py-3 text-sm font-semibold text-center"
+                    style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)",
+                      color: "#22c55e", fontFamily: "var(--font-dm-sans)" }}>
+                    Get It Now — $27
+                  </a>
+                </div>
+              </>
             ) : (
-              <div className="rounded-2xl px-5 py-5"
-                style={{ background: "rgba(4,30,58,0.65)", border: "1px solid rgba(10,61,107,0.5)" }}>
-                <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.3rem",
-                  color: "#e6fbff", letterSpacing: "0.04em" }}>
-                  Get a Free Plan to Reach Your Goal
-                </p>
-                <p className="mt-1 mb-4" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.78rem",
-                  color: "rgba(230,251,255,0.45)", lineHeight: 1.5 }}>
-                  Talk to a broker about getting ready to buy — free, no obligation.
-                  They can show you exactly what to build toward and how fast you can get there.
-                </p>
-                <button className="w-full rounded-xl py-3 text-sm font-semibold"
-                  style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)",
-                    color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
-                  Book a Free Call →
-                </button>
-              </div>
+              <>
+                <div className="rounded-2xl px-5 py-5 text-center"
+                  style={{ background: "rgba(245,158,11,0.07)", border: "2px solid rgba(245,158,11,0.45)" }}>
+                  <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.4rem",
+                    color: "#f59e0b", letterSpacing: "0.04em" }}>
+                    Get Your Custom Buying Plan
+                  </p>
+                  <p className="mt-1 mb-4" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem",
+                    color: "rgba(230,251,255,0.5)", lineHeight: 1.5 }}>
+                    Includes personalised savings roadmap PDF and income tracker tool — $27
+                  </p>
+                  <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+                    className="block w-full rounded-xl py-3 text-base font-semibold text-center"
+                    style={{ background: "linear-gradient(135deg,#b45309,#f59e0b)",
+                      color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
+                    Get Your Plan — $27
+                  </a>
+                </div>
+                <div className="rounded-2xl px-5 py-4 text-center"
+                  style={{ background: "rgba(4,30,58,0.65)", border: "1px solid rgba(10,61,107,0.55)" }}>
+                  <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem",
+                    color: "rgba(230,251,255,0.55)", lineHeight: 1.5 }}>
+                    Want to talk strategy? Book a free chat with a broker
+                  </p>
+                  <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
+                    className="mt-3 block w-full rounded-xl py-3 text-sm font-semibold text-center"
+                    style={{ background: "rgba(0,194,255,0.1)", border: "1px solid rgba(0,194,255,0.3)",
+                      color: "#00C2FF", fontFamily: "var(--font-dm-sans)" }}>
+                    Book a Free Chat →
+                  </a>
+                </div>
+              </>
             )}
           </motion.div>
 
-          <p className="pb-4 text-center"
+          <p className="pb-6 text-center"
             style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.68rem",
               color: "rgba(230,251,255,0.18)" }}>
             Estimates only. Speak with a licensed broker for a formal assessment.
@@ -1005,5 +1027,48 @@ export default function Screen10ResultsA({ quiz }: Props) {
         </div>
       </div>
     </div>
+
+    {/* ── Sliding bottom banner — appears after 20 seconds ─────────────────── */}
+    <AnimatePresence>
+      {showBanner && !bannerDismissed && (
+        <motion.div
+          initial={{ y: "100%" }}
+          animate={{ y: 0 }}
+          exit={{ y: "100%" }}
+          transition={{ type: "spring", damping: 22, stiffness: 280 }}
+          className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pt-4"
+          style={{
+            background: qualified ? "rgba(2,11,24,0.97)" : "rgba(20,12,2,0.97)",
+            borderTop: qualified ? "1.5px solid rgba(34,197,94,0.55)" : "1.5px solid rgba(245,158,11,0.55)",
+            boxShadow: qualified ? "0 -6px 40px -8px rgba(34,197,94,0.45)" : "0 -6px 40px -8px rgba(245,158,11,0.35)",
+          }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.15rem",
+                color: qualified ? "#22c55e" : "#f59e0b", letterSpacing: "0.04em", marginBottom: 4 }}>
+                {qualified
+                  ? "You're in a solid position to buy — book a free 15-minute call with our team"
+                  : "You're closer than you think — get a custom plan to reach your buying goal"}
+              </p>
+              <a href={qualified ? CALENDLY_URL : STRIPE_URL} target="_blank" rel="noreferrer"
+                className="mt-2 block w-full rounded-xl py-3 text-sm font-semibold text-center"
+                style={{
+                  background: qualified ? "linear-gradient(135deg,#0076BE,#00C2FF)" : "linear-gradient(135deg,#b45309,#f59e0b)",
+                  color: "#020B18", fontFamily: "var(--font-dm-sans)",
+                }}>
+                {qualified ? "Book Now →" : "Get Your Plan — $27"}
+              </a>
+            </div>
+            <button type="button" onClick={() => setBannerDismissed(true)}
+              className="mt-0.5 shrink-0 rounded-full p-1"
+              style={{ color: "rgba(230,251,255,0.4)", background: "rgba(10,61,107,0.5)" }}
+              aria-label="Dismiss">
+              ✕
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   );
 }

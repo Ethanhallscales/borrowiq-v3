@@ -15,6 +15,9 @@ import {
 } from "@/lib/calculations";
 import { calculateStampDuty } from "@/lib/stamp-duty";
 
+const CALENDLY_URL = process.env.NEXT_PUBLIC_CALENDLY_URL ?? "#";
+const STRIPE_URL   = process.env.NEXT_PUBLIC_STRIPE_LINK  ?? "#";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Props { quiz: QuizData; }
@@ -248,7 +251,16 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
     additionalBorrowing,
     existingMonthlyRepay,
     isOverleveraged,
+    qualified,
   } = results;
+
+  const [showBanner, setShowBanner]           = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setShowBanner(true), 20_000);
+    return () => clearTimeout(t);
+  }, []);
 
   const cashSavings       = quiz.cashSavings        ?? 0;
   const monthlyRental     = quiz.monthlyRentalIncome ?? 0;
@@ -370,6 +382,7 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
   };
 
   return (
+    <>
     <div
       className="relative flex h-dvh w-full flex-col overflow-hidden"
       style={{ background: "#020B18" }}
@@ -689,38 +702,81 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
           </motion.div>
         )}
 
-        {/* ── CTA ─────────────────────────────────────────────────────────── */}
-        <motion.div
-          className="mb-4 rounded-2xl px-4 py-5"
-          style={{
-            background: "rgba(34,197,94,0.08)",
-            border: "2px solid rgba(34,197,94,0.35)",
-            boxShadow: "0 0 40px -12px rgba(34,197,94,0.35)",
-          }}
-          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
-        >
-          <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.3rem", color: "#86efac", letterSpacing: "0.05em", marginBottom: 6 }}>
-            ✓ You&apos;re Ready for Your Next Property
-          </p>
-          <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem", color: "rgba(230,251,255,0.6)", lineHeight: 1.5, marginBottom: 16 }}>
-            {isInvestment
-              ? "Get a free strategy session — your broker will cover loan structuring, tax implications, and portfolio strategy."
-              : "Get a free strategy session on your next purchase — we'll map out the best structure for your situation."}
-          </p>
-          <motion.button
-            type="button"
-            className="w-full rounded-2xl py-4 text-base font-semibold"
-            style={{
-              background: "linear-gradient(135deg,#166534,#22c55e)",
-              color: "#fff",
-              fontFamily: "var(--font-dm-sans)",
-              boxShadow: "0 0 32px -8px rgba(34,197,94,0.6)",
-            }}
-            whileTap={{ scale: 0.97 }}
-          >
-            Book a Free Call →
-          </motion.button>
-        </motion.div>
+        {/* ── Permanent CTA cards ──────────────────────────────────────────── */}
+        {qualified ? (
+          <>
+            <motion.div
+              className="mb-4 rounded-2xl px-4 py-5 text-center"
+              style={{ background: "rgba(34,197,94,0.08)", border: "2px solid rgba(34,197,94,0.5)",
+                boxShadow: "0 0 36px -12px rgba(34,197,94,0.4)" }}
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
+            >
+              <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.4rem", color: "#22c55e", letterSpacing: "0.04em", marginBottom: 6 }}>
+                Book a Free Call
+              </p>
+              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem", color: "rgba(230,251,255,0.5)", lineHeight: 1.5, marginBottom: 14 }}>
+                {isInvestment
+                  ? "You're in a strong position for your next property. Book a free strategy session with our team."
+                  : "You're in a strong position for your next property. Let's map out your move."}
+              </p>
+              <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
+                className="block w-full rounded-xl py-3 text-base font-semibold text-center"
+                style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)", color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
+                Book Now →
+              </a>
+            </motion.div>
+            <motion.div
+              className="mb-4 rounded-2xl px-4 py-4 text-center"
+              style={{ background: "rgba(4,30,58,0.65)", border: "1px solid rgba(10,61,107,0.55)" }}
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
+            >
+              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem", color: "rgba(230,251,255,0.65)", lineHeight: 1.5 }}>
+                Want to accelerate your journey? Get a custom savings plan PDF and income tracker tool
+              </p>
+              <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+                className="mt-3 block w-full rounded-xl py-3 text-sm font-semibold text-center"
+                style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)",
+                  color: "#22c55e", fontFamily: "var(--font-dm-sans)" }}>
+                Get It Now — $27
+              </a>
+            </motion.div>
+          </>
+        ) : (
+          <>
+            <motion.div
+              className="mb-4 rounded-2xl px-4 py-5 text-center"
+              style={{ background: "rgba(245,158,11,0.07)", border: "2px solid rgba(245,158,11,0.45)" }}
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
+            >
+              <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.4rem", color: "#f59e0b", letterSpacing: "0.04em", marginBottom: 6 }}>
+                Get Your Custom Buying Plan
+              </p>
+              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem", color: "rgba(230,251,255,0.5)", lineHeight: 1.5, marginBottom: 14 }}>
+                Includes personalised savings roadmap PDF and income tracker tool — $27
+              </p>
+              <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+                className="block w-full rounded-xl py-3 text-base font-semibold text-center"
+                style={{ background: "linear-gradient(135deg,#b45309,#f59e0b)", color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
+                Get Your Plan — $27
+              </a>
+            </motion.div>
+            <motion.div
+              className="mb-4 rounded-2xl px-4 py-4 text-center"
+              style={{ background: "rgba(4,30,58,0.65)", border: "1px solid rgba(10,61,107,0.55)" }}
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
+            >
+              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem", color: "rgba(230,251,255,0.55)", lineHeight: 1.5 }}>
+                Want to talk strategy? Book a free chat with a broker
+              </p>
+              <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
+                className="mt-3 block w-full rounded-xl py-3 text-sm font-semibold text-center"
+                style={{ background: "rgba(0,194,255,0.1)", border: "1px solid rgba(0,194,255,0.3)",
+                  color: "#00C2FF", fontFamily: "var(--font-dm-sans)" }}>
+                Book a Free Chat →
+              </a>
+            </motion.div>
+          </>
+        )}
 
         {/* Share */}
         <motion.button
@@ -734,19 +790,61 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
             fontFamily: "var(--font-dm-sans)",
           }}
           whileTap={{ scale: 0.97 }}
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}
         >
           {copied ? "Copied! ✓" : "Share my result ↗"}
         </motion.button>
 
-        {/* Disclaimer */}
         <p
-          className="text-center text-xs leading-relaxed"
+          className="pb-6 text-center text-xs leading-relaxed"
           style={{ color: "rgba(230,251,255,0.2)", fontFamily: "var(--font-dm-sans)" }}
         >
-          This is an estimate only, based on the information you provided. Actual borrowing capacity and costs may differ. Speak with a licensed mortgage broker before making any financial decisions.
+          This is an estimate only. Speak with a licensed mortgage broker before making any financial decisions.
         </p>
       </div>
     </div>
+
+    {/* ── Sliding bottom banner — appears after 20 seconds ─────────────────── */}
+    <AnimatePresence>
+      {showBanner && !bannerDismissed && (
+        <motion.div
+          initial={{ y: "100%" }}
+          animate={{ y: 0 }}
+          exit={{ y: "100%" }}
+          transition={{ type: "spring", damping: 22, stiffness: 280 }}
+          className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pt-4"
+          style={{
+            background: qualified ? "rgba(2,11,24,0.97)" : "rgba(20,12,2,0.97)",
+            borderTop: qualified ? "1.5px solid rgba(34,197,94,0.55)" : "1.5px solid rgba(245,158,11,0.55)",
+            boxShadow: qualified ? "0 -6px 40px -8px rgba(34,197,94,0.45)" : "0 -6px 40px -8px rgba(245,158,11,0.35)",
+          }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.15rem",
+                color: qualified ? "#22c55e" : "#f59e0b", letterSpacing: "0.04em", marginBottom: 4 }}>
+                {qualified
+                  ? "You're in a strong position for your next property"
+                  : "You're closer than you think — get a custom plan to reach your buying goal"}
+              </p>
+              <a href={qualified ? CALENDLY_URL : STRIPE_URL} target="_blank" rel="noreferrer"
+                className="mt-2 block w-full rounded-xl py-3 text-sm font-semibold text-center"
+                style={{
+                  background: qualified ? "linear-gradient(135deg,#0076BE,#00C2FF)" : "linear-gradient(135deg,#b45309,#f59e0b)",
+                  color: "#020B18", fontFamily: "var(--font-dm-sans)",
+                }}>
+                {qualified ? "Book Now →" : "Get Your Plan — $27"}
+              </a>
+            </div>
+            <button type="button" onClick={() => setBannerDismissed(true)}
+              className="mt-0.5 shrink-0 rounded-full p-1"
+              style={{ color: "rgba(230,251,255,0.4)", background: "rgba(10,61,107,0.5)" }}
+              aria-label="Dismiss">
+              ✕
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   );
 }

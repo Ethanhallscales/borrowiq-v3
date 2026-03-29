@@ -66,6 +66,16 @@ const transition = { duration: 0.3, ease: [0.32, 0, 0.67, 0] as const };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function asQuiz(d: Record<string, any>): Partial<QuizData> { return d as Partial<QuizData>; }
 
+// ─── Webhook helper — fire and forget ─────────────────────────────────────────
+function submitLead(quiz: QuizData, contact: ContactData) {
+  const payload: QuizData = { ...quiz, ...contact };
+  fetch("/api/submit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => {});  // never block the UI
+}
+
 // ─── Path → first screen ──────────────────────────────────────────────────────
 
 const PATH_FIRST: Record<string, ScreenId> = {
@@ -265,7 +275,7 @@ export default function Home() {
             <ContactCapture
               heading="Unlock Your Free Report"
               subheading="Your personalised borrowing breakdown is ready."
-              onSubmit={(d: ContactData) => advance("A_results", asQuiz(d))}
+              onSubmit={(d: ContactData) => { submitLead(quiz, d); advance("A_results", asQuiz(d)); }}
               onBack={back}
             />
           </Slide>
@@ -379,7 +389,7 @@ export default function Home() {
             <ContactCapture
               heading="Your Property Plan Is Ready"
               subheading="Enter your details to unlock the full breakdown."
-              onSubmit={(d: ContactData) => advance("B_results", asQuiz(d))}
+              onSubmit={(d: ContactData) => { submitLead(quiz, d); advance("B_results", asQuiz(d)); }}
               onBack={back}
             />
           </Slide>
@@ -461,7 +471,7 @@ export default function Home() {
             <ContactCapture
               heading="Your Savings Report Is Ready"
               subheading="See exactly how much you could save — for free."
-              onSubmit={(d: ContactData) => advance("C_results", asQuiz(d))}
+              onSubmit={(d: ContactData) => { submitLead(quiz, d); advance("C_results", asQuiz(d)); }}
               onBack={back}
             />
           </Slide>
@@ -598,7 +608,7 @@ export default function Home() {
             <ContactCapture
               heading="Unlock Your Property Report"
               subheading="Your personalised next property breakdown is ready."
-              onSubmit={(d: ContactData) => advance("N_results", asQuiz(d))}
+              onSubmit={(d: ContactData) => { submitLead(quiz, d); advance("N_results", asQuiz(d)); }}
               onBack={back}
             />
           </Slide>

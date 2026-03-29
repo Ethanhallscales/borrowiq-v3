@@ -183,6 +183,14 @@ export function calculatePathA(quiz: QuizData): ResultsA {
 
   const totalUpfront = deposit + payable + lmi + 2_000 + 800; // conveyancing + inspection
 
+  // Qualification: can they afford a $500k property?
+  // Need 5% deposit ($25k) + stamp duty + $2,800 conveyancing/inspection, with positive cash left.
+  const QUALIFY_PRICE = 500_000;
+  const minDep500  = QUALIFY_PRICE * 0.05;
+  const { payable: dutyAt500 } = calculateStampDuty(state, QUALIFY_PRICE, true, isNewBuild);
+  const cashAfterCosts500 = deposit - minDep500 - dutyAt500 - 2_800;
+  const qualified = capacity >= (QUALIFY_PRICE - minDep500) && cashAfterCosts500 >= 0;
+
   return {
     borrowingCapacity: capacity,
     purchasePower,
@@ -193,7 +201,7 @@ export function calculatePathA(quiz: QuizData): ResultsA {
     stampDutyPayable: Math.round(payable),
     stampDutySaved: Math.round(concession),
     totalUpfront: Math.round(totalUpfront),
-    qualified: capacity >= 500_000 && deposit >= 30_000,
+    qualified,
     grossIncome: combinedGross,
   };
 }
@@ -429,11 +437,13 @@ export function pmtN(annualRate: number, principal: number, months: number): num
 export interface ResultsN {
   totalEquity:          number;  // totalPropertyValue - totalLoanBalance (gross, can be 0)
   usableEquity:         number;  // (totalPropertyValue * 0.8) - totalLoanBalance (floor 0)
-  additionalBorrowing:  number;  // new borrowing capacity (base, no new investment rent)
-  maxBudget:            number;  // usableEquity + cashSavings + additionalBorrowing
+  affordableEquityDraw: number;  // serviceability-capped equity access = min(usableEquity, additionalBorrowing)
+  additionalBorrowing:  number;  // new borrowing capacity after servicing existing debt
+  maxBudget:            number;  // cashSavings + additionalBorrowing (equity is borrowed, not free cash)
   existingMonthlyRepay: number;  // PMT at MARKET_RATE 25yr on totalLoanBalance
   grossIncome:          number;
   isOverleveraged:      boolean; // usableEquity was negative (raw)
+  qualified:            boolean; // maxBudget >= $500k
 }
 
 /**
@@ -503,7 +513,13 @@ export function calculatePathN(quiz: QuizData): ResultsN {
   const totalEquity  = Math.max(0, rawEquity);
   const isOverleveraged = rawEquity < 0;
 
-  const maxBudget = usableEquity + cashSavings + additionalBorrowing;
+  // Equity access = borrowing against the existing portfolio (increases existing loan balance).
+  // It competes with the new property loan for the same serviceability budget.
+  // Total new debt (equity draw + new property loan) cannot exceed additionalBorrowing.
+  const affordableEquityDraw = Math.min(usableEquity, additionalBorrowing);
+  // Budget = free cash (savings) + max serviceable new debt (split as equity draw + new loan)
+  const maxBudget = cashSavings + additionalBorrowing;
+  const qualified  = maxBudget >= 500_000;
 
   const shadedPrimary = shadeIncome(annualIncome, employmentType);
   const shadedPartner = buyingSituation === "partner" ? shadeIncome(partnerIncome, "payg") : 0;
@@ -512,11 +528,13 @@ export function calculatePathN(quiz: QuizData): ResultsN {
   return {
     totalEquity,
     usableEquity,
+    affordableEquityDraw,
     additionalBorrowing,
     maxBudget,
     existingMonthlyRepay,
     grossIncome,
     isOverleveraged,
+    qualified,
   };
 }
 
