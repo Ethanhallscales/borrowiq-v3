@@ -95,6 +95,7 @@ async function buildAndSend(quiz: QuizData, webhookUrl: string) {
         // Calculated results
         total_equity:           r.totalEquity,
         usable_equity:          r.usableEquity,
+        accessible_equity:      r.usableEquity,
         affordable_equity_draw: r.affordableEquityDraw,
         additional_borrowing_power: r.additionalBorrowing,
         next_property_budget:   r.maxBudget,

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BlobBackground } from "@/components/ui/MorphingBlob";
+import { ResultsPopup } from "@/components/ui/ResultsPopup";
 import type { QuizData, AustralianState } from "@/lib/types";
 import {
   calculatePathN,
@@ -110,19 +111,18 @@ function computeAtPriceN(
   isInvestment:        boolean,
 ): PriceBD {
   const { payable: stampDuty } = calculateStampDuty(state, price, false, false);
-  const minDepPct      = isInvestment ? 0.10 : 0.05;
-  const minDepFromPct  = Math.round(price * minDepPct);
-  const minForCapacity = Math.max(0, price - additionalBorrowing);
-  const reqDeposit     = Math.max(minDepFromPct, minForCapacity);
+  const totalCosts   = stampDuty + CONV;
+  const minDepPct    = isInvestment ? 0.10 : 0.05;
+  const reqDeposit   = Math.round(price * minDepPct);
 
-  // Equity is drawn first to cover deposit + buying costs; cash covers any remainder.
-  // This is the real money flow: equity drawdown can fund anything.
-  const totalRequired = reqDeposit + stampDuty + CONV;
-  const equityUsed    = Math.min(usableEquity, totalRequired);  // total equity drawn
-  const cashUsed      = Math.max(0, totalRequired - usableEquity);
-  // Cash buffer = real cash savings left after cash costs are paid.
-  // Unused equity is NOT a cash buffer — it sits in the property until drawn.
-  const cashBuffer    = cashSavings - cashUsed;
+  // Cash covers costs first; equity covers deposit + remaining costs; all
+  // borrowed amounts (equity draw + new loan) must fit within additionalBorrowing.
+  const cashForCosts    = Math.min(cashSavings, totalCosts);
+  const costsFromEquity = totalCosts - cashForCosts;
+  const equityNeeded    = reqDeposit + costsFromEquity;
+  const equityUsed      = Math.min(usableEquity, equityNeeded);
+  const cashUsed        = cashForCosts + Math.max(0, equityNeeded - usableEquity);
+  const cashBuffer      = cashSavings - cashUsed;
 
   const newLoan      = price - reqDeposit;
   const lmi          = Math.round(calculateLMI(newLoan, price));
@@ -132,6 +132,10 @@ function computeAtPriceN(
 
   // Equity drawn increases the existing loan — compute new repayment on increased balance
   const monthlyRepayExisting = Math.round(pmtN(MARKET_RATE, totalLoanBalance + equityUsed, 25 * 12));
+
+  // Total new borrowing = equity draw + new loan. Both compete for the same
+  // additional borrowing capacity (maxTotalDebt − existing loan balance).
+  const totalNewBorrowing = equityUsed + newLoan;
 
   return {
     price,
@@ -147,7 +151,7 @@ function computeAtPriceN(
     monthlyRepayExisting,
     equityUsed,
     cashUsed,
-    loanExceedsCapacity: newLoan > additionalBorrowing,
+    loanExceedsCapacity: totalNewBorrowing > additionalBorrowing,
   };
 }
 
@@ -171,7 +175,7 @@ function findMaxAffordablePrice(
     const price = SLIDER_MIN + mid * STEP;
     const add   = getAdditional(price);
     const bd    = computeAtPriceN(price, usableEquity, cashSavings, add, totalLoanBalance, state, isInvestment);
-    if (bd.cashBuffer >= 0) lo = mid;
+    if (bd.cashBuffer >= 0 && !bd.loanExceedsCapacity) lo = mid;
     else hi = mid - 1;
   }
 
@@ -246,7 +250,6 @@ const BANNER_COLORS: Record<BannerVariant, { bg: string; border: string; icon: s
 export default function ScreenN9ResultsB({ quiz }: Props) {
   const results = useMemo(() => calculatePathN(quiz), [quiz]);
   const {
-    totalEquity,
     usableEquity,
     additionalBorrowing,
     existingMonthlyRepay,
@@ -258,7 +261,7 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setShowBanner(true), 20_000);
+    const t = setTimeout(() => setShowBanner(true), 15_000);
     return () => clearTimeout(t);
   }, []);
 
@@ -282,11 +285,11 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
   const [t3, setT3] = useState(0);
 
   useEffect(() => {
-    setT1(totalEquity);
+    setT1(usableEquity);
     const id2 = setTimeout(() => setT2(additionalBorrowing), 700);
     const id3 = setTimeout(() => setT3(maxAffordablePrice),  1400);
     return () => { clearTimeout(id2); clearTimeout(id3); };
-  }, [totalEquity, additionalBorrowing, maxAffordablePrice]);
+  }, [usableEquity, additionalBorrowing, maxAffordablePrice]);
 
   const c1 = useCountUp(t1, 1200);
   const c2 = useCountUp(t2, 1200);
@@ -421,8 +424,8 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
         {/* Count-up stats */}
         <div className="mb-6 flex flex-col gap-3">
           {[
-            { label: "Total equity", value: c1, delay: 0 },
-            { label: "Additional borrowing power", value: c2, delay: 0.1 },
+            { label: "Accessible equity (80% LVR)", value: c1, delay: 0 },
+            { label: "Max additional borrowing", value: c2, delay: 0.1 },
           ].map(({ label, value, delay }) => (
             <motion.div
               key={label}
@@ -464,7 +467,7 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
               {formatCurrency(c3)}
             </p>
             <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.7rem", color: "rgba(230,251,255,0.35)", marginTop: 4 }}>
-              After stamp duty &amp; buying costs
+              Realistic budget after stamp duty &amp; costs
             </p>
           </motion.div>
         </div>
@@ -705,6 +708,7 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
         {/* ── Permanent CTA cards ──────────────────────────────────────────── */}
         {qualified ? (
           <>
+            {/* Book Free Call — primary CTA for qualified */}
             <motion.div
               className="mb-4 rounded-2xl px-4 py-5 text-center"
               style={{ background: "rgba(34,197,94,0.08)", border: "2px solid rgba(34,197,94,0.5)",
@@ -715,67 +719,113 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
                 Book a Free Call
               </p>
               <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem", color: "rgba(230,251,255,0.5)", lineHeight: 1.5, marginBottom: 14 }}>
-                {isInvestment
-                  ? "You're in a strong position for your next property. Book a free strategy session with our team."
-                  : "You're in a strong position for your next property. Let's map out your move."}
+                You could get into a {formatCurrency(maxAffordablePrice)} next property. Book a free 15-minute call with one of our brokers to walk through your options.
               </p>
               <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
                 className="block w-full rounded-xl py-3 text-base font-semibold text-center"
                 style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)", color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
-                Book Now →
+                Book a Free Call →
               </a>
             </motion.div>
+            {/* $27 accelerator — secondary CTA for qualified */}
             <motion.div
-              className="mb-4 rounded-2xl px-4 py-4 text-center"
-              style={{ background: "rgba(4,30,58,0.65)", border: "1px solid rgba(10,61,107,0.55)" }}
+              className="mb-4 rounded-2xl overflow-hidden"
+              style={{ background: "rgba(4,30,58,0.85)", border: "1.5px solid rgba(245,158,11,0.5)",
+                boxShadow: "0 0 48px -16px rgba(245,158,11,0.35), inset 0 1px 0 rgba(245,158,11,0.12)" }}
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
             >
-              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem", color: "rgba(230,251,255,0.65)", lineHeight: 1.5 }}>
-                Want to accelerate your journey? Get a custom savings plan PDF and income tracker tool
-              </p>
-              <a href={STRIPE_URL} target="_blank" rel="noreferrer"
-                className="mt-3 block w-full rounded-xl py-3 text-sm font-semibold text-center"
-                style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)",
-                  color: "#22c55e", fontFamily: "var(--font-dm-sans)" }}>
-                Get It Now — $27
-              </a>
+              <div className="px-4 pt-4 pb-3" style={{ borderBottom: "1px solid rgba(245,158,11,0.18)" }}>
+                <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.35rem",
+                  color: "#fbbf24", letterSpacing: "0.04em", lineHeight: 1.15 }}>
+                  Want to maximise your position? Get your personalised buying plan
+                </p>
+              </div>
+              <div className="px-4 py-3 flex flex-col gap-2.5">
+                {[
+                  `Your personalised next property roadmap based on your income of ${formatCurrency(quiz.annualIncome ?? 0)}`,
+                  `Custom equity & borrowing tracker built around your portfolio`,
+                  `Step-by-step strategy for accessing equity and maximising borrowing capacity`,
+                  `Rate comparison and refinance assessment for your current loan`,
+                  `Priority broker callback — skip the queue when you're ready to move`,
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <span style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.82rem",
+                      color: "#fbbf24", fontWeight: 700, lineHeight: 1.5, flexShrink: 0 }}>✓</span>
+                    <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.78rem",
+                      color: "rgba(230,251,255,0.75)", lineHeight: 1.5 }}>{item}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="px-4 pb-4">
+                <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+                  className="block w-full rounded-xl py-3.5 text-base font-bold text-center"
+                  style={{ background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
+                    color: "#020B18", fontFamily: "var(--font-dm-sans)",
+                    boxShadow: "0 0 28px -6px rgba(245,158,11,0.55)", letterSpacing: "0.01em" }}>
+                  Get My Custom Plan — $27
+                </a>
+                <div className="mt-2.5 flex items-center justify-center gap-4">
+                  <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.68rem", color: "rgba(230,251,255,0.35)" }}>
+                    ⚡ Instant delivery to your email
+                  </p>
+                  <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.68rem", color: "rgba(230,251,255,0.35)" }}>
+                    ✓ 30-day money-back guarantee
+                  </p>
+                </div>
+              </div>
             </motion.div>
           </>
         ) : (
-          <>
-            <motion.div
-              className="mb-4 rounded-2xl px-4 py-5 text-center"
-              style={{ background: "rgba(245,158,11,0.07)", border: "2px solid rgba(245,158,11,0.45)" }}
-              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
-            >
-              <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.4rem", color: "#f59e0b", letterSpacing: "0.04em", marginBottom: 6 }}>
-                Get Your Custom Buying Plan
+          <motion.div
+            className="mb-4 rounded-2xl overflow-hidden"
+            style={{ background: "rgba(4,30,58,0.85)", border: "1.5px solid rgba(245,158,11,0.5)",
+              boxShadow: "0 0 48px -16px rgba(245,158,11,0.35), inset 0 1px 0 rgba(245,158,11,0.12)" }}
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
+          >
+            <div className="px-4 pt-4 pb-3" style={{ borderBottom: "1px solid rgba(245,158,11,0.18)" }}>
+              <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.35rem",
+                color: "#fbbf24", letterSpacing: "0.04em", lineHeight: 1.15 }}>
+                Your Next Property Accelerator — $27
               </p>
-              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem", color: "rgba(230,251,255,0.5)", lineHeight: 1.5, marginBottom: 14 }}>
-                Includes personalised savings roadmap PDF and income tracker tool — $27
+              <p className="mt-1" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.72rem",
+                color: "rgba(245,158,11,0.6)" }}>
+                Everything you need to make your next move
               </p>
+            </div>
+            <div className="px-4 py-3 flex flex-col gap-2.5">
+              {[
+                `Your personalised next property roadmap based on your income of ${formatCurrency(quiz.annualIncome ?? 0)}`,
+                `Custom equity & borrowing tracker built around your portfolio`,
+                `Step-by-step strategy for accessing equity and maximising borrowing capacity`,
+                `Rate comparison and refinance assessment for your current loan`,
+                `Priority broker callback — skip the queue when you're ready to move`,
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.82rem",
+                    color: "#fbbf24", fontWeight: 700, lineHeight: 1.5, flexShrink: 0 }}>✓</span>
+                  <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.78rem",
+                    color: "rgba(230,251,255,0.75)", lineHeight: 1.5 }}>{item}</p>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 pb-4">
               <a href={STRIPE_URL} target="_blank" rel="noreferrer"
-                className="block w-full rounded-xl py-3 text-base font-semibold text-center"
-                style={{ background: "linear-gradient(135deg,#b45309,#f59e0b)", color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
-                Get Your Plan — $27
+                className="block w-full rounded-xl py-3.5 text-base font-bold text-center"
+                style={{ background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
+                  color: "#020B18", fontFamily: "var(--font-dm-sans)",
+                  boxShadow: "0 0 28px -6px rgba(245,158,11,0.55)", letterSpacing: "0.01em" }}>
+                Get My Custom Plan — $27
               </a>
-            </motion.div>
-            <motion.div
-              className="mb-4 rounded-2xl px-4 py-4 text-center"
-              style={{ background: "rgba(4,30,58,0.65)", border: "1px solid rgba(10,61,107,0.55)" }}
-              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
-            >
-              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem", color: "rgba(230,251,255,0.55)", lineHeight: 1.5 }}>
-                Want to talk strategy? Book a free chat with a broker
-              </p>
-              <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
-                className="mt-3 block w-full rounded-xl py-3 text-sm font-semibold text-center"
-                style={{ background: "rgba(0,194,255,0.1)", border: "1px solid rgba(0,194,255,0.3)",
-                  color: "#00C2FF", fontFamily: "var(--font-dm-sans)" }}>
-                Book a Free Chat →
-              </a>
-            </motion.div>
-          </>
+              <div className="mt-2.5 flex items-center justify-center gap-4">
+                <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.68rem", color: "rgba(230,251,255,0.35)" }}>
+                  ⚡ Instant delivery to your email
+                </p>
+                <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.68rem", color: "rgba(230,251,255,0.35)" }}>
+                  ✓ 30-day money-back guarantee
+                </p>
+              </div>
+            </div>
+          </motion.div>
         )}
 
         {/* Share */}
@@ -804,47 +854,77 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
       </div>
     </div>
 
-    {/* ── Sliding bottom banner — appears after 20 seconds ─────────────────── */}
-    <AnimatePresence>
-      {showBanner && !bannerDismissed && (
-        <motion.div
-          initial={{ y: "100%" }}
-          animate={{ y: 0 }}
-          exit={{ y: "100%" }}
-          transition={{ type: "spring", damping: 22, stiffness: 280 }}
-          className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pt-4"
-          style={{
-            background: qualified ? "rgba(2,11,24,0.97)" : "rgba(20,12,2,0.97)",
-            borderTop: qualified ? "1.5px solid rgba(34,197,94,0.55)" : "1.5px solid rgba(245,158,11,0.55)",
-            boxShadow: qualified ? "0 -6px 40px -8px rgba(34,197,94,0.45)" : "0 -6px 40px -8px rgba(245,158,11,0.35)",
-          }}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1">
-              <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.15rem",
-                color: qualified ? "#22c55e" : "#f59e0b", letterSpacing: "0.04em", marginBottom: 4 }}>
-                {qualified
-                  ? "You're in a strong position for your next property"
-                  : "You're closer than you think — get a custom plan to reach your buying goal"}
-              </p>
-              <a href={qualified ? CALENDLY_URL : STRIPE_URL} target="_blank" rel="noreferrer"
-                className="mt-2 block w-full rounded-xl py-3 text-sm font-semibold text-center"
-                style={{
-                  background: qualified ? "linear-gradient(135deg,#0076BE,#00C2FF)" : "linear-gradient(135deg,#b45309,#f59e0b)",
-                  color: "#020B18", fontFamily: "var(--font-dm-sans)",
-                }}>
-                {qualified ? "Book Now →" : "Get Your Plan — $27"}
-              </a>
-            </div>
-            <button type="button" onClick={() => setBannerDismissed(true)}
-              className="mt-0.5 shrink-0 rounded-full p-1"
-              style={{ color: "rgba(230,251,255,0.4)", background: "rgba(10,61,107,0.5)" }}
-              aria-label="Dismiss">
-              ✕
-            </button>
+    {/* ── Popup overlay — appears after 15 seconds ─────────────────────────── */}
+    <ResultsPopup show={showBanner && !bannerDismissed} onDismiss={() => setBannerDismissed(true)}>
+      {qualified ? (
+        <div className="rounded-2xl px-5 py-6 text-center"
+          style={{ background: "rgba(2,11,24,0.97)", border: "2px solid rgba(34,197,94,0.55)",
+            boxShadow: "0 0 60px -12px rgba(34,197,94,0.5)" }}>
+          <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.8rem", color: "#22c55e",
+            letterSpacing: "0.04em", lineHeight: 1.15 }}>
+            You could get into a {formatCurrency(maxAffordablePrice)} next property
+          </p>
+          <p className="mt-3 mb-5" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem",
+            color: "rgba(230,251,255,0.6)", lineHeight: 1.6 }}>
+            We&apos;d love to give you a free 15-minute call with one of our brokers to walk through your options.
+          </p>
+          <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
+            className="block w-full rounded-xl py-3.5 text-base font-bold text-center"
+            style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)", color: "#020B18",
+              fontFamily: "var(--font-dm-sans)" }}>
+            Book a Free Call →
+          </a>
+        </div>
+      ) : (
+        <div className="rounded-2xl overflow-hidden"
+          style={{ background: "rgba(4,30,58,0.97)", border: "1.5px solid rgba(245,158,11,0.5)",
+            boxShadow: "0 0 60px -12px rgba(245,158,11,0.4)" }}>
+          <div className="px-5 pt-5 pb-4" style={{ borderBottom: "1px solid rgba(245,158,11,0.18)" }}>
+            <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.45rem",
+              color: "#fbbf24", letterSpacing: "0.04em", lineHeight: 1.15 }}>
+              Your Next Property Accelerator — $27
+            </p>
+            <p className="mt-1" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.75rem",
+              color: "rgba(245,158,11,0.6)" }}>
+              Everything you need to make your next move
+            </p>
           </div>
-        </motion.div>
+          <div className="px-5 py-4 flex flex-col gap-3">
+            {[
+              `Your personalised next property roadmap based on your income of ${formatCurrency(quiz.annualIncome ?? 0)}`,
+              `Custom equity & borrowing tracker built around your portfolio`,
+              `Step-by-step strategy for accessing equity and maximising borrowing capacity`,
+              `Rate comparison and refinance assessment for your current loan`,
+              `Priority broker callback — skip the queue when you're ready to move`,
+            ].map((item, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <span style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem",
+                  color: "#fbbf24", fontWeight: 700, lineHeight: 1.5, flexShrink: 0 }}>✓</span>
+                <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.82rem",
+                  color: "rgba(230,251,255,0.75)", lineHeight: 1.5 }}>{item}</p>
+              </div>
+            ))}
+          </div>
+          <div className="px-5 pb-5">
+            <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+              className="block w-full rounded-xl py-4 text-base font-bold text-center"
+              style={{ background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
+                color: "#020B18", fontFamily: "var(--font-dm-sans)",
+                boxShadow: "0 0 28px -6px rgba(245,158,11,0.55)", letterSpacing: "0.01em" }}>
+              Get My Custom Plan — $27
+            </a>
+            <div className="mt-3 flex items-center justify-center gap-4">
+              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.7rem", color: "rgba(230,251,255,0.35)" }}>
+                ⚡ Instant delivery to your email
+              </p>
+              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.7rem", color: "rgba(230,251,255,0.35)" }}>
+                ✓ 30-day money-back guarantee
+              </p>
+            </div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
+    </ResultsPopup>
     </>
   );
 }

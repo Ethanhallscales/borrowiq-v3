@@ -195,21 +195,23 @@ export function calculatePathA(quiz: QuizData): ResultsA {
 // ─── Path B results ───────────────────────────────────────────────────────────
 
 export interface ResultsB {
-  grossEquity:          number;
-  usableEquity:         number;  // theoretical max at 80% LVR of current property
-  affordableEquityDraw: number;  // serviceability-capped: what they can actually borrow against equity
-  newPropertyLoan:      number;  // remaining borrowing capacity for the new property loan
-  totalBudget:          number;  // affordableEquityDraw + newPropertyLoan (or netSaleProceeds + newPropertyLoan)
-  monthlyRepayment:     number;  // on all new debt at market rate
-  newLvr:               number;
-  stampDuty:            number;
-  stampDutyPayable:     number;
-  totalUpfront:         number;
+  usableEquity:            number;  // accessible equity at 80% LVR
+  maxAdditionalBorrowing:  number;  // total additional debt income can service
+  affordableEquityDraw:    number;  // serviceability-capped equity access
+  newPropertyLoan:         number;  // remaining borrowing capacity for new property loan
+  totalBudget:             number;  // realistic max property price after costs
+  monthlyRepayment:        number;  // on all new debt at market rate
+  existingRepayAfterDraw:  number;  // monthly repayment on existing loan after equity draw
+  existingRepayBefore:     number;  // monthly repayment on existing loan before draw
+  newLvr:                  number;
+  stampDuty:               number;
+  stampDutyPayable:        number;
+  totalUpfront:            number;
   // selling scenario
-  netSaleProceeds?:     number;
+  netSaleProceeds?:        number;
   // keeping scenario
-  monthlyRentalEst?:    number;
-  netMonthlyCashflow?:  number;
+  monthlyRentalEst?:       number;
+  netMonthlyCashflow?:     number;
 }
 
 export function calculatePathB(quiz: QuizData): ResultsB {
@@ -235,23 +237,22 @@ export function calculatePathB(quiz: QuizData): ResultsB {
 
   const isSelling = currentPropertyPlan === "selling";
 
-  // ── Equity ────────────────────────────────────────────────────────────────
-  const grossEquity  = Math.max(0, currentPropertyValue - currentLoanBalance);
+  // ── Accessible equity (at 80% LVR) ───────────────────────────────────────
+  // To access equity you must refinance — the bank will only lend up to 80% of
+  // the property value. Usable equity = (value × 0.8) − loan balance.
   const usableEquity = Math.max(0, currentPropertyValue * 0.8 - currentLoanBalance);
 
-  // ── Income (all users treated as PAYG — 100% of stated income) ────────────
+  // ── Gross monthly income ──────────────────────────────────────────────────
+  // Salary + partner salary + 80% of rental income (industry shading).
   const partnerGross = buyingSituation === "partner" ? partnerIncome : 0;
-  const shadedRental  = monthlyRentalIncome * 12 * 0.8;
-
-  const { netIncome: pNet } = calculateTax(annualIncome + partnerGross);
-  const rentalNet           = shadedRental * 0.68;
-  const monthlyNet          = (pNet + rentalNet) / 12;
+  const grossMonthlyIncome = (annualIncome + partnerGross) / 12
+    + monthlyRentalIncome * 0.80;
 
   // ── Monthly surplus ────────────────────────────────────────────────────────
-  // The existing mortgage is NOT subtracted here. Instead we compute the maximum
-  // total debt this surplus can service (maxTotalDebt), then subtract the current
-  // loan balance to find how much MORE can be borrowed. This correctly prices
-  // equity access as borrowed money that must be serviced, not free cash.
+  // Gross income minus living expenses (HEM) and other commitments.
+  // The existing mortgage is NOT subtracted here — instead we compute the
+  // max total debt ceiling then subtract the current loan balance, so equity
+  // draw is correctly priced as borrowed money.
   const hecsAnnual  = hecsDebt > 0 ? calculateHecsRepayment(annualIncome) : 0;
   const monthlyComm = (creditCardLimit * 0.038) / 12
     + carLoanMonthly
@@ -259,42 +260,56 @@ export function calculatePathB(quiz: QuizData): ResultsB {
     + hecsAnnual / 12;
 
   const hem     = getHEM(buyingSituation, dependants);
-  const surplus = Math.max(0, monthlyNet - monthlyComm - hem);
+  const surplus = Math.max(0, grossMonthlyIncome - monthlyComm - hem);
 
   // ── Serviceability ceiling ─────────────────────────────────────────────────
-  const assessedRate = Math.max(currentRate + 0.03, MIN_ASSESSED_RATE);
-  const maxTotalDebt = pvAnnuity(assessedRate, surplus);
+  // Max total debt at 8.5% assessment rate over 30 years.
+  const maxTotalDebt = pvAnnuity(MIN_ASSESSED_RATE, surplus);
 
-  // When selling, the existing mortgage is retired from sale proceeds — no
-  // existing debt carries forward. When keeping (or undecided), the current
-  // loan balance occupies part of the serviceability ceiling.
+  // When selling, existing mortgage is retired from sale proceeds — no existing
+  // debt carries forward. When keeping/undecided, current loan balance occupies
+  // part of the serviceability ceiling.
   const effectiveExistingDebt  = isSelling ? 0 : currentLoanBalance;
   const maxAdditionalBorrowing = Math.round(
     Math.max(0, maxTotalDebt - effectiveExistingDebt) / 1000
   ) * 1000;
 
-  // ── Affordable equity draw (keeping / undecided only) ──────────────────────
-  // Equity access = new borrowing against current property. It competes with the
-  // new property loan for the same serviceability budget. Cannot exceed usable
-  // equity OR the total additional borrowing capacity.
+  // ── Affordable equity draw ─────────────────────────────────────────────────
+  // Equity draw competes with new property loan for the SAME serviceability
+  // budget. Cannot exceed usable equity OR total additional borrowing capacity.
+  // Drawing equity increases your existing loan balance and repayments.
   const affordableEquityDraw = isSelling
     ? 0
     : Math.min(maxAdditionalBorrowing, usableEquity);
 
   // ── New property loan ─────────────────────────────────────────────────────
-  // Remaining serviceability capacity after the equity draw is claimed.
   const newPropertyLoan = Math.max(0, maxAdditionalBorrowing - affordableEquityDraw);
 
-  // ── Total budget ───────────────────────────────────────────────────────────
-  // Selling: sale cash (not a new loan) + borrowing capacity (no existing debt overhead)
-  // Keeping / undecided: equity draw + new property loan = maxAdditionalBorrowing
+  // ── Realistic budget ──────────────────────────────────────────────────────
+  // Total additional borrowing covers equity draw + new loan + stamp duty + costs.
+  // Solve for max property price where price + stampDuty(price) + costs ≤ capacity.
+  const isNewBuild = targetPropertyType === "land";
   const agentFees           = currentPropertyValue * 0.025;
   const netSaleProceedsAmt  = Math.round(
     Math.max(0, currentPropertyValue - currentLoanBalance - agentFees - 5_000)
   );
-  const totalBudget = isSelling
+  const totalCapacity = isSelling
     ? netSaleProceedsAmt + maxAdditionalBorrowing
     : maxAdditionalBorrowing;
+
+  // Binary search for realistic budget (max property price after costs)
+  let realisticBudget = 0;
+  {
+    let lo = 0, hi = Math.min(totalCapacity, 5_000_000);
+    while (hi - lo > 5_000) {
+      const mid = Math.round((lo + hi) / 2 / 5_000) * 5_000;
+      const { payable: sd } = calculateStampDuty(targetState, mid, false, isNewBuild);
+      if (mid + sd + 2_800 <= totalCapacity) lo = mid;
+      else hi = mid - 5_000;
+    }
+    realisticBudget = lo;
+  }
+  const totalBudget = realisticBudget;
 
   // ── LVR on the new property ────────────────────────────────────────────────
   const depositForNewProp  = isSelling ? netSaleProceedsAmt : affordableEquityDraw;
@@ -303,13 +318,16 @@ export function calculatePathB(quiz: QuizData): ResultsB {
     ? (loanForNewProperty / targetPropertyPrice) * 100
     : 0;
 
-  // ── Monthly repayment on all new debt at market rate ──────────────────────
-  // For keeping: covers both equity draw + new property loan (= maxAdditionalBorrowing).
-  // For selling: equity draw is zero so this is just the new property loan component.
+  // ── Monthly repayments ────────────────────────────────────────────────────
+  // New debt repayment at market rate (equity draw + new property loan).
   const monthlyRepayment = Math.round(pmt(MARKET_RATE, maxAdditionalBorrowing));
+  // Existing loan repayment BEFORE and AFTER equity draw (at market rate, 30yr).
+  const existingRepayBefore    = Math.round(pmt(MARKET_RATE, currentLoanBalance));
+  const existingRepayAfterDraw = isSelling
+    ? 0
+    : Math.round(pmt(MARKET_RATE, currentLoanBalance + affordableEquityDraw));
 
   // ── Stamp duty (no FHB concession for next purchase) ──────────────────────
-  const isNewBuild = targetPropertyType === "land";
   const { base, payable } = calculateStampDuty(targetState, targetPropertyPrice, false, isNewBuild);
   const totalUpfront = Math.round(affordableEquityDraw + payable + 2_000 + 800);
 
@@ -323,19 +341,21 @@ export function calculatePathB(quiz: QuizData): ResultsB {
     ? Math.round((currentPropertyValue * 0.04) / 12)
     : undefined;
   const netMonthlyCashflow = monthlyRentalEst != null
-    ? monthlyRentalEst - currentMonthlyRepayment
+    ? monthlyRentalEst - existingRepayAfterDraw
     : undefined;
 
   return {
-    grossEquity:          Math.round(grossEquity),
-    usableEquity:         Math.round(usableEquity),
-    affordableEquityDraw: Math.round(affordableEquityDraw),
-    newPropertyLoan:      Math.round(newPropertyLoan),
-    totalBudget:          Math.round(totalBudget),
+    usableEquity:            Math.round(usableEquity),
+    maxAdditionalBorrowing:  Math.round(maxAdditionalBorrowing),
+    affordableEquityDraw:    Math.round(affordableEquityDraw),
+    newPropertyLoan:         Math.round(newPropertyLoan),
+    totalBudget:             Math.round(totalBudget),
     monthlyRepayment,
-    newLvr:               Math.round(newLvr * 10) / 10,
-    stampDuty:            Math.round(base),
-    stampDutyPayable:     Math.round(payable),
+    existingRepayAfterDraw,
+    existingRepayBefore,
+    newLvr:                  Math.round(newLvr * 10) / 10,
+    stampDuty:               Math.round(base),
+    stampDutyPayable:        Math.round(payable),
     totalUpfront,
     netSaleProceeds,
     monthlyRentalEst,
@@ -454,16 +474,11 @@ export function computeAdditionalBorrowingN(
     dependants          = 0,
   } = quiz;
 
-  // All users treated as PAYG — 100% of stated income
+  // Gross monthly income: salary + partner + 80% of all rental (existing + new)
   const partnerGross = buyingSituation === "partner" ? partnerIncome : 0;
-  // Add all rental income (existing + new property) at 80% shading to gross before tax
-  const shadedRentalAnnual = (monthlyRentalIncome + extraGrossMonthlyRent) * 12 * 0.80;
+  const grossMonthlyIncome = (annualIncome + partnerGross) / 12
+    + (monthlyRentalIncome + extraGrossMonthlyRent) * 0.80;
 
-  const combinedGross = annualIncome + partnerGross + shadedRentalAnnual;
-  const { netIncome } = calculateTax(combinedGross);
-  const monthlyNet = netIncome / 12;
-
-  const existingRepay = Math.round(pmtN(MARKET_RATE, totalLoanBalance, 25 * 12));
   const hecsAnnual    = hecsDebt > 0 ? calculateHecsRepayment(annualIncome) : 0;
   const otherMonthly  = (creditCardLimit * 0.038) / 12
     + carLoanMonthly
@@ -471,10 +486,13 @@ export function computeAdditionalBorrowingN(
     + hecsAnnual / 12;
 
   const hem     = getHEM(buyingSituation, dependants);
-  const surplus = Math.max(0, monthlyNet - existingRepay - otherMonthly - hem);
+  const surplus = Math.max(0, grossMonthlyIncome - otherMonthly - hem);
 
-  const assessedRate = Math.max(MARKET_RATE + 0.03, MIN_ASSESSED_RATE);
-  return Math.round(pvAnnuity(assessedRate, surplus) / 1000) * 1000;
+  // Max total debt at 8.5% assessment rate, then subtract existing loan balance.
+  // Equity draw is borrowed money — it and the new property loan must both fit
+  // within this additional capacity.
+  const maxTotalDebt = pvAnnuity(MIN_ASSESSED_RATE, surplus);
+  return Math.round(Math.max(0, maxTotalDebt - totalLoanBalance) / 1000) * 1000;
 }
 
 export function calculatePathN(quiz: QuizData): ResultsN {

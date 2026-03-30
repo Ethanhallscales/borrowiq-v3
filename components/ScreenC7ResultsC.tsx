@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { BlobBackground } from "@/components/ui/MorphingBlob";
+import { ResultsPopup } from "@/components/ui/ResultsPopup";
 import type { QuizData } from "@/lib/types";
 import { calculatePathC, formatCurrency } from "@/lib/calculations";
 import { BEST_AVAILABLE_RATE, BEST_AVAILABLE_RATE_LABEL } from "@/lib/rates";
@@ -49,13 +50,9 @@ export default function ScreenC7ResultsC({ quiz }: Props) {
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setShowBanner(true), 20_000);
+    const t = setTimeout(() => setShowBanner(true), 15_000);
     return () => clearTimeout(t);
   }, []);
-
-  const bannerCopy = rateAboveMarket
-    ? "You could be saving thousands"
-    : "Your rate looks competitive but your loan structure might still have room to improve";
 
   function share() {
     if (!navigator.share) return;
@@ -171,7 +168,7 @@ export default function ScreenC7ResultsC({ quiz }: Props) {
           ))}
         </motion.div>
 
-        {/* ── Permanent booking CTA (all C leads qualified) ─────────────────── */}
+        {/* ── Book Free Call — primary CTA ──────────────────────────────────── */}
         <motion.div className="rounded-2xl px-5 py-5 text-center"
           style={{ background: "rgba(34,197,94,0.08)", border: "2px solid rgba(34,197,94,0.5)",
             boxShadow: "0 0 36px -12px rgba(34,197,94,0.4)" }}
@@ -179,27 +176,59 @@ export default function ScreenC7ResultsC({ quiz }: Props) {
           <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.5rem", color: "#22c55e", letterSpacing: "0.04em" }}>
             Book a Free Call
           </p>
-          <p className="mt-1 mb-4" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem", color: "rgba(230,251,255,0.5)" }}>
-            A free review with our broker can have you saving {formatCurrency(r.annualSavings)} this year.
+          <p className="mt-1 mb-4" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem", color: "rgba(230,251,255,0.5)", lineHeight: 1.5 }}>
+            You could be saving {formatCurrency(r.annualSavings)} per year. Book a free 15-minute call with one of our brokers to walk through your options.
           </p>
           <a href={CALENDLY_URL} target="_blank" rel="noreferrer" className="block w-full rounded-xl py-3 text-base font-semibold text-center"
             style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)", color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
-            Book Now →
+            Book a Free Call →
           </a>
         </motion.div>
 
-        {/* ── Paid product card ─────────────────────────────────────────────── */}
-        <motion.div className="rounded-2xl px-5 py-4 text-center"
-          style={{ background: "rgba(4,30,58,0.65)", border: "1px solid rgba(10,61,107,0.55)" }}
+        {/* ── $27 accelerator — secondary CTA ─────────────────────────────────── */}
+        <motion.div className="rounded-2xl overflow-hidden"
+          style={{ background: "rgba(4,30,58,0.85)", border: "1.5px solid rgba(245,158,11,0.5)",
+            boxShadow: "0 0 48px -16px rgba(245,158,11,0.35), inset 0 1px 0 rgba(245,158,11,0.12)" }}
           initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.75 }}>
-          <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem", color: "rgba(230,251,255,0.65)", lineHeight: 1.5 }}>
-            Want to accelerate your journey? Get a custom savings plan PDF and income tracker tool
-          </p>
-          <a href={STRIPE_URL} target="_blank" rel="noreferrer" className="mt-3 block w-full rounded-xl py-3 text-sm font-semibold text-center"
-            style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)",
-              color: "#22c55e", fontFamily: "var(--font-dm-sans)" }}>
-            Get It Now — $27
-          </a>
+          <div className="px-5 pt-5 pb-4" style={{ borderBottom: "1px solid rgba(245,158,11,0.18)" }}>
+            <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.45rem",
+              color: "#fbbf24", letterSpacing: "0.04em", lineHeight: 1.15 }}>
+              Want to maximise your position? Get your personalised buying plan
+            </p>
+          </div>
+          <div className="px-5 py-4 flex flex-col gap-3">
+            {[
+              `Your personalised savings roadmap — exactly how to redirect ${formatCurrency(r.annualSavings)}/year in savings`,
+              `Custom rate comparison report for your current loan of ${formatCurrency(quiz.currentLoanBalance ?? 0)}`,
+              `Offset account strategy to maximise tax-free interest savings`,
+              `Step-by-step refinance checklist so you know exactly what to do next`,
+              `Priority broker callback — skip the queue when you're ready to move`,
+            ].map((item, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <span style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem",
+                  color: "#fbbf24", fontWeight: 700, lineHeight: 1.5, flexShrink: 0 }}>✓</span>
+                <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.82rem",
+                  color: "rgba(230,251,255,0.75)", lineHeight: 1.5 }}>{item}</p>
+              </div>
+            ))}
+          </div>
+          <div className="px-5 pb-5">
+            <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+              className="block w-full rounded-xl py-4 text-base font-bold text-center"
+              style={{ background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
+                color: "#020B18", fontFamily: "var(--font-dm-sans)",
+                boxShadow: "0 0 28px -6px rgba(245,158,11,0.55)", letterSpacing: "0.01em" }}>
+              Get My Custom Plan — $27
+            </a>
+            <div className="mt-3 flex items-center justify-center gap-4">
+              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.7rem", color: "rgba(230,251,255,0.35)" }}>
+                ⚡ Instant delivery to your email
+              </p>
+              <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.7rem", color: "rgba(230,251,255,0.35)" }}>
+                ✓ 30-day money-back guarantee
+              </p>
+            </div>
+          </div>
         </motion.div>
 
         <motion.button type="button" onClick={share}
@@ -216,40 +245,27 @@ export default function ScreenC7ResultsC({ quiz }: Props) {
       </div>
     </div>
 
-    {/* ── Sliding bottom banner — appears after 20 seconds ─────────────────── */}
-    <AnimatePresence>
-      {showBanner && !bannerDismissed && (
-        <motion.div
-          initial={{ y: "100%" }}
-          animate={{ y: 0 }}
-          exit={{ y: "100%" }}
-          transition={{ type: "spring", damping: 22, stiffness: 280 }}
-          className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-safe pb-4 pt-4"
-          style={{ background: "rgba(2,11,24,0.97)", borderTop: "1.5px solid rgba(34,197,94,0.55)",
-            boxShadow: "0 -6px 40px -8px rgba(34,197,94,0.45)" }}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1">
-              <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.15rem",
-                color: "#22c55e", letterSpacing: "0.04em", marginBottom: 4 }}>
-                {bannerCopy}
-              </p>
-              <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
-                className="mt-2 block w-full rounded-xl py-3 text-sm font-semibold text-center"
-                style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)", color: "#020B18",
-                  fontFamily: "var(--font-dm-sans)" }}>
-                Book Now →
-              </a>
-            </div>
-            <button type="button" onClick={() => setBannerDismissed(true)}
-              className="mt-0.5 shrink-0 rounded-full p-1"
-              style={{ color: "rgba(230,251,255,0.4)", background: "rgba(10,61,107,0.5)" }}
-              aria-label="Dismiss">
-              ✕
-            </button>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    {/* ── Popup overlay — appears after 15 seconds ─────────────────────────── */}
+    <ResultsPopup show={showBanner && !bannerDismissed} onDismiss={() => setBannerDismissed(true)}>
+      <div className="rounded-2xl px-5 py-6 text-center"
+        style={{ background: "rgba(2,11,24,0.97)", border: "2px solid rgba(34,197,94,0.55)",
+          boxShadow: "0 0 60px -12px rgba(34,197,94,0.5)" }}>
+        <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.8rem", color: "#22c55e",
+          letterSpacing: "0.04em", lineHeight: 1.15 }}>
+          You could be saving {formatCurrency(r.annualSavings)} per year
+        </p>
+        <p className="mt-3 mb-5" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.85rem",
+          color: "rgba(230,251,255,0.6)", lineHeight: 1.6 }}>
+          Book a free rate review with one of our brokers to see how much you could save.
+        </p>
+        <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
+          className="block w-full rounded-xl py-3.5 text-base font-bold text-center"
+          style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)", color: "#020B18",
+            fontFamily: "var(--font-dm-sans)" }}>
+          Book a Free Call →
+        </a>
+      </div>
+    </ResultsPopup>
     </>
   );
 }
