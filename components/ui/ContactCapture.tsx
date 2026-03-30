@@ -170,6 +170,20 @@ export default function ContactCapture({ heading, subheading, onSubmit, onBack }
           Your details are kept private and never sold.
           By submitting you agree to be contacted by Assist Loans.
         </p>
+        <p
+          className="mt-2 text-center text-xs"
+          style={{ color: "rgba(230,251,255,0.2)", fontFamily: "var(--font-dm-sans)" }}
+        >
+          By submitting you agree to our{" "}
+          <a
+            href="https://assistloans.com.au/privacy-policy/"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: "rgba(0,194,255,0.4)", textDecoration: "underline" }}
+          >
+            Privacy Policy
+          </a>
+        </p>
       </div>
     </div>
   );

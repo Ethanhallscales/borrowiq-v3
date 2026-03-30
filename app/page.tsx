@@ -600,6 +600,24 @@ export default function Home() {
         )}
 
       </AnimatePresence>
+
+      {/* ── Privacy footer — visible on every screen ───────────────────────── */}
+      <div className="pointer-events-auto fixed bottom-0 left-0 right-0 z-40 flex justify-center pb-2">
+        <a
+          href="https://assistloans.com.au/privacy-policy/"
+          target="_blank"
+          rel="noreferrer"
+          className="px-3 py-1 text-center"
+          style={{
+            fontFamily: "var(--font-dm-sans)",
+            fontSize: "0.6rem",
+            color: "rgba(230,251,255,0.15)",
+            textDecoration: "none",
+          }}
+        >
+          Privacy Policy
+        </a>
+      </div>
     </div>
   );
 }
