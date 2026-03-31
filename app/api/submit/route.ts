@@ -12,9 +12,11 @@ export async function POST(request: Request) {
 
   const webhookUrl = process.env.GHL_WEBHOOK_URL;
   if (webhookUrl) {
-    buildAndSend(quiz, webhookUrl).catch((err) => {
+    try {
+      await buildAndSend(quiz, webhookUrl);
+    } catch (err) {
       console.error("[BorrowIQ] webhook send failed:", err);
-    });
+    }
   }
 
   return Response.json({ ok: true });
