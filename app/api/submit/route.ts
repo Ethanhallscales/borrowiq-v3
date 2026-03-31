@@ -108,15 +108,32 @@ async function buildAndSend(quiz: QuizData, webhookUrl: string) {
     return;
   }
 
-  const payload = { ...shared, ...pathFields };
+  // Merge shared + path-specific, then sanitise: replace any undefined/null
+  // values with empty strings so JSON.stringify never drops keys or sends null.
+  const raw = { ...shared, ...pathFields };
+  const payload: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    payload[k] = v ?? "";
+  }
 
   console.log("[BorrowIQ] sending webhook payload:", JSON.stringify(payload, null, 2));
 
-  const res = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-  console.log("[BorrowIQ] webhook response:", res.status, res.statusText);
+    let body = "";
+    try { body = await res.text(); } catch { /* ignore read errors */ }
+
+    if (res.ok) {
+      console.log("[BorrowIQ] webhook success:", res.status, body.slice(0, 500));
+    } else {
+      console.error("[BorrowIQ] webhook non-OK response:", res.status, res.statusText, body.slice(0, 500));
+    }
+  } catch (err) {
+    console.error("[BorrowIQ] webhook fetch failed:", err);
+  }
 }
