@@ -1,5 +1,6 @@
 import type { QuizData } from "@/lib/types";
 import { calculatePathA, calculatePathN, calculatePathC } from "@/lib/calculations";
+import { calculateGrants } from "@/lib/grants";
 
 export async function POST(request: Request) {
   let quiz: QuizData;
@@ -11,7 +12,6 @@ export async function POST(request: Request) {
 
   const webhookUrl = process.env.GHL_WEBHOOK_URL;
   if (webhookUrl) {
-    // Fire and forget — do not await, do not block results page
     buildAndSend(quiz, webhookUrl).catch((err) => {
       console.error("[BorrowIQ] webhook send failed:", err);
     });
@@ -21,95 +21,94 @@ export async function POST(request: Request) {
 }
 
 async function buildAndSend(quiz: QuizData, webhookUrl: string) {
-  const path = quiz.path ?? "first-home";
-  const state = quiz.state ?? quiz.targetState ?? "QLD";
-  const timestamp = new Date().toISOString();
+  const pathId = quiz.path ?? "first-home";
+  const state  = quiz.state ?? quiz.targetState ?? "QLD";
 
-  // ── Contact fields (GHL standard) ──────────────────────────────────────────
-  const contact = {
-    first_name: quiz.firstName ?? "",
-    last_name:  quiz.lastName  ?? "",
-    email:      quiz.email     ?? "",
-    phone:      quiz.mobile    ?? "",
-    source:     "borrowiq",
-    timestamp,
+  // ── Shared fields (sent by ALL paths) ─────────────────────────────────────
+  const shared: Record<string, string | number> = {
+    first_name:                   quiz.firstName          ?? "",
+    last_name:                    quiz.lastName           ?? "",
+    email:                        quiz.email              ?? "",
+    phone:                        quiz.mobile             ?? "",
+    source:                       "borrowiq",
+    timestamp:                    new Date().toISOString(),
+    borrowiq_income:              quiz.annualIncome        ?? 0,
+    borrowiq_partner_income:      quiz.partnerIncome       ?? 0,
+    borrowiq_credit_card_limit:   quiz.creditCardLimit     ?? 0,
+    borrowiq_car_loan_monthly:    quiz.carLoanMonthly      ?? 0,
+    borrowiq_personal_loan_monthly: quiz.personalLoanMonthly ?? 0,
+    borrowiq_hecs_debt:           quiz.hecsDebt            ?? 0,
+    borrowiq_dependants:          quiz.dependants           ?? 0,
   };
 
-  // ── Shared custom fields (borrowiq_ prefix for GHL mapping) ────────────────
-  const sharedCustom = {
-    borrowiq_buying_situation: quiz.buyingSituation   ?? "",
-    borrowiq_property_type:    quiz.propertyType       ?? "",
-    borrowiq_state:            state,
-    borrowiq_income:           quiz.annualIncome        ?? 0,
-    borrowiq_savings:          quiz.deposit ?? quiz.cashSavings ?? 0,
-    borrowiq_dependants:       quiz.dependants           ?? 0,
-  };
+  // ── Path-specific payload ─────────────────────────────────────────────────
+  let pathFields: Record<string, string | number>;
 
-  // ── Build flat payload and send ─────────────────────────────────────────────
-  let payload: Record<string, string | number>;
-
-  if (path === "first-home") {
+  if (pathId === "first-home") {
     const r = calculatePathA(quiz);
-    payload = {
-      ...contact,
-      ...sharedCustom,
-      tags:                         ["BORROWIQ-LEAD", "FHB", r.qualified ? "QUALIFIED" : "NURTURE", state].join(","),
-      borrowiq_path:                "first_home_buyer",
-      borrowiq_borrowing_capacity:  r.borrowingCapacity,
-      borrowiq_max_property:        r.purchasePower,
-      borrowiq_monthly_repayment:   r.monthlyRepayment,
-      borrowiq_lvr:                 r.lvr,
-      borrowiq_qualified:           r.qualified ? "yes" : "no",
+    const grants = calculateGrants(quiz, r.grossIncome);
+    const eligible = grants
+      .filter(g => g.status === "eligible")
+      .map(g => g.shortName);
+
+    pathFields = {
+      path:                        "first_home_buyer",
+      tags:                        ["BORROWIQ-LEAD", "FHB", r.qualified ? "QUALIFIED" : "NURTURE", state].join(","),
+      borrowiq_qualified:          r.qualified ? "yes" : "no",
+      borrowiq_buying_situation:   quiz.buyingSituation    ?? "",
+      borrowiq_property_type:      quiz.propertyType        ?? "",
+      borrowiq_state:              state,
+      borrowiq_deposit:            quiz.deposit              ?? 0,
+      borrowiq_borrowing_capacity: r.borrowingCapacity,
+      borrowiq_max_property:       r.purchasePower,
+      borrowiq_monthly_repayment:  r.monthlyRepayment,
+      borrowiq_lvr:                r.lvr,
+      borrowiq_grants_eligible:    eligible.length > 0 ? eligible.join(",") : "none",
     };
 
-  } else if (path === "next-property") {
+  } else if (pathId === "next-property") {
     const r = calculatePathN(quiz);
-    payload = {
-      ...contact,
-      ...sharedCustom,
-      tags:                          ["BORROWIQ-LEAD", "NEXT-HOME", r.qualified ? "QUALIFIED" : "NURTURE", state].join(","),
-      borrowiq_path:                 "next_home",
-      borrowiq_qualified:            r.qualified ? "yes" : "no",
-      borrowiq_goal:                 quiz.nextPropertyGoal      ?? "",
-      borrowiq_num_properties:       quiz.portfolioCount         ?? 0,
-      borrowiq_total_property_value: quiz.totalPropertyValue     ?? 0,
-      borrowiq_total_loan_balance:   quiz.totalLoanBalance       ?? 0,
-      borrowiq_rental_income:        quiz.monthlyRentalIncome    ?? 0,
-      borrowiq_equity:               r.usableEquity,
-      borrowiq_borrowing_capacity:   r.additionalBorrowing,
+
+    pathFields = {
+      path:                         "next_home",
+      tags:                         ["BORROWIQ-LEAD", "NEXT-HOME", r.qualified ? "QUALIFIED" : "NURTURE", state].join(","),
+      borrowiq_qualified:           r.qualified ? "yes" : "no",
+      borrowiq_buying_situation:    quiz.buyingSituation      ?? "",
+      borrowiq_state:               state,
+      borrowiq_goal:                quiz.nextPropertyGoal     ?? "",
+      borrowiq_num_properties:      quiz.portfolioCount        ?? 0,
+      borrowiq_portfolio_worth:     quiz.totalPropertyValue    ?? 0,
+      borrowiq_total_loan:          quiz.totalLoanBalance      ?? 0,
+      borrowiq_rental_income:       quiz.monthlyRentalIncome   ?? 0,
+      borrowiq_deposit:             quiz.cashSavings            ?? 0,
+      borrowiq_equity:              r.usableEquity,
+      borrowiq_additional_borrowing: r.additionalBorrowing,
       borrowiq_next_property_budget: r.maxBudget,
-      borrowiq_max_property:         r.maxBudget,
-      borrowiq_monthly_repayment:    r.existingMonthlyRepay,
-      borrowiq_lvr:                  0,
     };
 
-  } else if (path === "review-loan") {
+  } else if (pathId === "review-loan") {
     const r = calculatePathC(quiz);
-    const currentRate = quiz.currentRate ?? 0.065;
-    payload = {
-      ...contact,
-      ...sharedCustom,
+
+    pathFields = {
+      path:                        "refinance",
       tags:                        ["BORROWIQ-LEAD", "REFINANCE", "QUALIFIED", state].join(","),
-      borrowiq_path:               "refinance",
       borrowiq_qualified:          "yes",
-      borrowiq_current_loan:       quiz.currentLoanBalance ?? 0,
-      borrowiq_current_rate:       currentRate,
-      borrowiq_loan_type:          quiz.currentLoanType    ?? "",
+      borrowiq_current_rate:       quiz.currentRate          ?? 0.065,
+      borrowiq_total_loan:         quiz.currentLoanBalance   ?? 0,
+      borrowiq_loan_type:          quiz.currentLoanType      ?? "",
       borrowiq_has_offset:         quiz.hasOffset ? "yes" : "no",
-      borrowiq_offset_balance:     quiz.offsetBalance       ?? 0,
-      borrowiq_savings_balance:    quiz.otherSavings         ?? 0,
-      borrowiq_property_value:     quiz.propertyValue        ?? 0,
+      borrowiq_offset_balance:     quiz.offsetBalance         ?? 0,
+      borrowiq_deposit:            quiz.otherSavings           ?? 0,
+      borrowiq_portfolio_worth:    quiz.propertyValue          ?? 0,
       borrowiq_annual_savings:     r.annualSavings,
-      borrowiq_borrowing_capacity: 0,
-      borrowiq_max_property:       0,
-      borrowiq_monthly_repayment:  0,
-      borrowiq_lvr:                r.currentLvr,
     };
 
   } else {
-    console.warn("[BorrowIQ] unknown path, skipping webhook:", path);
+    console.warn("[BorrowIQ] unknown path, skipping webhook:", pathId);
     return;
   }
+
+  const payload = { ...shared, ...pathFields };
 
   console.log("[BorrowIQ] sending webhook payload:", JSON.stringify(payload, null, 2));
 
