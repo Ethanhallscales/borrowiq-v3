@@ -26,8 +26,8 @@ async function buildAndSend(quiz: QuizData, webhookUrl: string) {
 
   // ── Shared fields (sent by ALL paths) ─────────────────────────────────────
   const shared: Record<string, string | number> = {
-    first_name:                   quiz.firstName          ?? "",
-    last_name:                    quiz.lastName           ?? "",
+    firstName:                    quiz.firstName          ?? "",
+    lastName:                     quiz.lastName           ?? "",
     email:                        quiz.email              ?? "",
     phone:                        quiz.mobile             ?? "",
     source:                       "borrowiq",
