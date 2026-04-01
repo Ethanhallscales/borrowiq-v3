@@ -41,6 +41,10 @@ async function buildAndSend(quiz: QuizData, webhookUrl: string) {
     borrowiq_personal_loan_monthly: quiz.personalLoanMonthly ?? 0,
     borrowiq_hecs_debt:           quiz.hecsDebt            ?? 0,
     borrowiq_dependants:          quiz.dependants           ?? 0,
+    borrowiq_utm_source:          quiz.utmSource            ?? "",
+    borrowiq_utm_medium:          quiz.utmMedium            ?? "",
+    borrowiq_utm_campaign:        quiz.utmCampaign          ?? "",
+    borrowiq_utm_content:         quiz.utmContent           ?? "",
   };
 
   // ── Path-specific payload ─────────────────────────────────────────────────

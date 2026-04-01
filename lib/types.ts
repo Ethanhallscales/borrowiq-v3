@@ -116,4 +116,10 @@ export interface QuizData {
   lastName?:  string;
   mobile?:    string;
   email?:     string;
+
+  // ── UTM tracking ─────────────────────────────────────────────────────────
+  utmSource?:   string;
+  utmMedium?:   string;
+  utmCampaign?: string;
+  utmContent?:  string;
 }

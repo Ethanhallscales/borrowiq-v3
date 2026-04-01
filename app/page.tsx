@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import type {
@@ -144,6 +144,18 @@ export default function Home() {
   const [history,   setHistory]   = useState<ScreenId[]>(["s0"]);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [quiz,      setQuiz]      = useState<QuizData>({});
+
+  // Capture UTM params from URL on first load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const utmSource   = params.get("utm_source")   ?? undefined;
+    const utmMedium   = params.get("utm_medium")   ?? undefined;
+    const utmCampaign = params.get("utm_campaign")  ?? undefined;
+    const utmContent  = params.get("utm_content")   ?? undefined;
+    if (utmSource || utmMedium || utmCampaign || utmContent) {
+      setQuiz(q => ({ ...q, utmSource, utmMedium, utmCampaign, utmContent }));
+    }
+  }, []);
 
   const screen  = history[history.length - 1];
   const stepInfo = getStepInfo(screen);
