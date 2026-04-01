@@ -9,7 +9,7 @@ import type {
   LoanType, PropertyGoal, CurrentPropPlan, NextPropertyGoal,
 } from "@/lib/types";
 import { getStepInfo } from "@/lib/types";
-import { calculatePathA, calculatePathB, calculatePathC, formatCurrency, pmtN, MARKET_RATE as MKT } from "@/lib/calculations";
+import { calculatePathA, calculatePathB, calculatePathN, calculatePathC, formatCurrency, pmtN, MARKET_RATE as MKT } from "@/lib/calculations";
 
 // ── Flow A ────────────────────────────────────────────────────────────────────
 import Screen0EntryFork        from "@/components/Screen0EntryFork";
@@ -51,6 +51,7 @@ import ScreenC7ResultsC        from "@/components/ScreenC7ResultsC";
 import ProcessingScreen from "@/components/ui/ProcessingScreen";
 import ContactCapture   from "@/components/ui/ContactCapture";
 import type { ContactData } from "@/components/ui/ContactCapture";
+import { trackViewContent, trackPathSelected, trackCompleteRegistration } from "@/lib/pixel";
 
 // ─── Slide transition ─────────────────────────────────────────────────────────
 
@@ -177,7 +178,12 @@ export default function Home() {
         {screen === "s0" && (
           <Slide id="s0" direction={direction}>
             <Screen0EntryFork
-              onComplete={(path) => advance(PATH_FIRST[path], { path })}
+              onComplete={(path) => {
+                trackViewContent("borrowiq_start");
+                const ghlPath = path === "first-home" ? "first_home_buyer" : path === "next-property" ? "next_home" : "refinance";
+                trackPathSelected(ghlPath);
+                advance(PATH_FIRST[path], { path });
+              }}
             />
           </Slide>
         )}
@@ -264,7 +270,12 @@ export default function Home() {
             <ContactCapture
               heading="Unlock Your Free Report"
               subheading="Your personalised borrowing breakdown is ready."
-              onSubmit={(d: ContactData) => { submitLead(quiz, d); advance("A_results", asQuiz(d)); }}
+              onSubmit={(d: ContactData) => {
+                submitLead(quiz, d);
+                const r = calculatePathA(quiz);
+                trackCompleteRegistration({ path: "first_home_buyer", currency: "AUD", value: r.borrowingCapacity });
+                advance("A_results", asQuiz(d));
+              }}
               onBack={back}
             />
           </Slide>
@@ -378,7 +389,12 @@ export default function Home() {
             <ContactCapture
               heading="Your Property Plan Is Ready"
               subheading="Enter your details to unlock the full breakdown."
-              onSubmit={(d: ContactData) => { submitLead(quiz, d); advance("B_results", asQuiz(d)); }}
+              onSubmit={(d: ContactData) => {
+                submitLead(quiz, d);
+                const r = calculatePathB(quiz);
+                trackCompleteRegistration({ path: "next_home", currency: "AUD", value: r.totalBudget });
+                advance("B_results", asQuiz(d));
+              }}
               onBack={back}
             />
           </Slide>
@@ -460,7 +476,12 @@ export default function Home() {
             <ContactCapture
               heading="Your Savings Report Is Ready"
               subheading="See exactly how much you could save — for free."
-              onSubmit={(d: ContactData) => { submitLead(quiz, d); advance("C_results", asQuiz(d)); }}
+              onSubmit={(d: ContactData) => {
+                submitLead(quiz, d);
+                const r = calculatePathC(quiz);
+                trackCompleteRegistration({ path: "refinance", currency: "AUD", value: r.annualSavings });
+                advance("C_results", asQuiz(d));
+              }}
               onBack={back}
             />
           </Slide>
@@ -587,7 +608,12 @@ export default function Home() {
             <ContactCapture
               heading="Unlock Your Property Report"
               subheading="Your personalised next property breakdown is ready."
-              onSubmit={(d: ContactData) => { submitLead(quiz, d); advance("N_results", asQuiz(d)); }}
+              onSubmit={(d: ContactData) => {
+                submitLead(quiz, d);
+                const r = calculatePathN(quiz);
+                trackCompleteRegistration({ path: "next_home", currency: "AUD", value: r.maxBudget });
+                advance("N_results", asQuiz(d));
+              }}
               onBack={back}
             />
           </Slide>

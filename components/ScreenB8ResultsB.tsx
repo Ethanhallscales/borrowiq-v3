@@ -6,6 +6,7 @@ import { BlobBackground } from "@/components/ui/MorphingBlob";
 import { ResultsPopup } from "@/components/ui/ResultsPopup";
 import type { QuizData } from "@/lib/types";
 import { calculatePathB, formatCurrency } from "@/lib/calculations";
+import { trackNHResults, trackSchedule, trackInitiateCheckout } from "@/lib/pixel";
 
 const CALENDLY_URL = process.env.NEXT_PUBLIC_CALENDLY_URL ?? "#";
 const STRIPE_URL   = process.env.NEXT_PUBLIC_STRIPE_LINK  ?? "#";
@@ -54,8 +55,10 @@ export default function ScreenB8ResultsB({ quiz }: Props) {
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
   useEffect(() => {
+    trackNHResults(qualified);
     const t = setTimeout(() => setShowBanner(true), 15_000);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function share() {
@@ -218,7 +221,7 @@ export default function ScreenB8ResultsB({ quiz }: Props) {
               <p className="mt-1 mb-4" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.8rem", color: "rgba(230,251,255,0.5)", lineHeight: 1.5 }}>
                 You could get into a {formatCurrency(r.totalBudget)} next property. Book a free 15-minute call with one of our brokers to walk through your options.
               </p>
-              <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
+              <a href={CALENDLY_URL} target="_blank" rel="noreferrer" onClick={() => trackSchedule("next_home")}
                 className="block w-full rounded-xl py-3 text-base font-semibold text-center"
                 style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)", color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
                 Book a Free Call →
@@ -252,7 +255,7 @@ export default function ScreenB8ResultsB({ quiz }: Props) {
                 ))}
               </div>
               <div className="px-5 pb-5">
-                <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+                <a href={STRIPE_URL} target="_blank" rel="noreferrer" onClick={() => trackInitiateCheckout()}
                   className="block w-full rounded-xl py-4 text-base font-bold text-center"
                   style={{ background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
                     color: "#020B18", fontFamily: "var(--font-dm-sans)",
@@ -302,7 +305,7 @@ export default function ScreenB8ResultsB({ quiz }: Props) {
               ))}
             </div>
             <div className="px-5 pb-5">
-              <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+              <a href={STRIPE_URL} target="_blank" rel="noreferrer" onClick={() => trackInitiateCheckout()}
                 className="block w-full rounded-xl py-4 text-base font-bold text-center"
                 style={{ background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
                   color: "#020B18", fontFamily: "var(--font-dm-sans)",
@@ -349,7 +352,7 @@ export default function ScreenB8ResultsB({ quiz }: Props) {
             color: "rgba(230,251,255,0.6)", lineHeight: 1.6 }}>
             We&apos;d love to give you a free 15-minute call with one of our brokers to walk through your options.
           </p>
-          <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
+          <a href={CALENDLY_URL} target="_blank" rel="noreferrer" onClick={() => trackSchedule("next_home")}
             className="block w-full rounded-xl py-3.5 text-base font-bold text-center"
             style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)", color: "#020B18",
               fontFamily: "var(--font-dm-sans)" }}>
@@ -387,7 +390,7 @@ export default function ScreenB8ResultsB({ quiz }: Props) {
             ))}
           </div>
           <div className="px-5 pb-5">
-            <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+            <a href={STRIPE_URL} target="_blank" rel="noreferrer" onClick={() => trackInitiateCheckout()}
               className="block w-full rounded-xl py-4 text-base font-bold text-center"
               style={{ background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
                 color: "#020B18", fontFamily: "var(--font-dm-sans)",

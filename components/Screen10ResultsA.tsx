@@ -6,6 +6,7 @@ import { BlobBackground } from "@/components/ui/MorphingBlob";
 import { ResultsPopup } from "@/components/ui/ResultsPopup";
 import type { QuizData, AustralianState } from "@/lib/types";
 import { calculatePathA, formatCurrency, pmt, calculateLMI, MARKET_RATE } from "@/lib/calculations";
+import { trackFHBResults, trackSchedule, trackInitiateCheckout } from "@/lib/pixel";
 import { calculateStampDuty } from "@/lib/stamp-duty";
 import {
   FHG_PRICE_CAPS, FHG_INCOME_SINGLE, FHG_INCOME_COUPLE,
@@ -509,8 +510,10 @@ export default function Screen10ResultsA({ quiz }: Props) {
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
   useEffect(() => {
+    trackFHBResults(qualified);
     const t = setTimeout(() => setShowBanner(true), 15_000);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Savings gap: how much more cash they need to afford a $500k property
@@ -973,7 +976,7 @@ export default function Screen10ResultsA({ quiz }: Props) {
                     color: "rgba(230,251,255,0.45)", lineHeight: 1.5 }}>
                     You could get into a {formatCurrency(smartDefault.price)} property. Book a free 15-minute call with one of our brokers to walk through your options.
                   </p>
-                  <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
+                  <a href={CALENDLY_URL} target="_blank" rel="noreferrer" onClick={() => trackSchedule("first_home_buyer")}
                     className="block w-full rounded-xl py-3.5 text-base font-bold text-center"
                     style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)",
                       color: "#020B18", fontFamily: "var(--font-dm-sans)" }}>
@@ -1018,7 +1021,7 @@ export default function Screen10ResultsA({ quiz }: Props) {
                     </p>
                   </div>
                   <div className="px-5 pb-5">
-                    <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+                    <a href={STRIPE_URL} target="_blank" rel="noreferrer" onClick={() => trackInitiateCheckout()}
                       className="block w-full rounded-xl py-4 text-base font-bold text-center"
                       style={{ background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
                         color: "#020B18", fontFamily: "var(--font-dm-sans)",
@@ -1084,7 +1087,7 @@ export default function Screen10ResultsA({ quiz }: Props) {
                   </p>
                 </div>
                 <div className="px-5 pb-5">
-                  <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+                  <a href={STRIPE_URL} target="_blank" rel="noreferrer" onClick={() => trackInitiateCheckout()}
                     className="block w-full rounded-xl py-4 text-base font-bold text-center"
                     style={{
                       background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
@@ -1133,7 +1136,7 @@ export default function Screen10ResultsA({ quiz }: Props) {
             color: "rgba(230,251,255,0.6)", lineHeight: 1.6 }}>
             We&apos;d love to give you a free 15-minute call with one of our brokers to walk through your options.
           </p>
-          <a href={CALENDLY_URL} target="_blank" rel="noreferrer"
+          <a href={CALENDLY_URL} target="_blank" rel="noreferrer" onClick={() => trackSchedule("first_home_buyer")}
             className="block w-full rounded-xl py-3.5 text-base font-bold text-center"
             style={{ background: "linear-gradient(135deg,#0076BE,#00C2FF)", color: "#020B18",
               fontFamily: "var(--font-dm-sans)" }}>
@@ -1178,7 +1181,7 @@ export default function Screen10ResultsA({ quiz }: Props) {
             </p>
           </div>
           <div className="px-5 pb-5">
-            <a href={STRIPE_URL} target="_blank" rel="noreferrer"
+            <a href={STRIPE_URL} target="_blank" rel="noreferrer" onClick={() => trackInitiateCheckout()}
               className="block w-full rounded-xl py-4 text-base font-bold text-center"
               style={{ background: "linear-gradient(135deg,#92400e,#d97706,#fbbf24)",
                 color: "#020B18", fontFamily: "var(--font-dm-sans)",
