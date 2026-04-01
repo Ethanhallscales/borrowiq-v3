@@ -28,6 +28,10 @@ export function trackSchedule(path: string) {
   fbq("track", "Schedule", { path });
 }
 
+export function trackScheduleConfirmed() {
+  fbq("track", "Schedule", { content_name: "booking_confirmed" });
+}
+
 export function trackInitiateCheckout() {
   fbq("track", "InitiateCheckout", { value: 27, currency: "AUD" });
 }
