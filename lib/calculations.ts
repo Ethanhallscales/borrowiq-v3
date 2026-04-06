@@ -4,6 +4,10 @@
 
 import type { QuizData, BuyingSituation } from "./types";
 import { calculateStampDuty } from "./stamp-duty";
+import {
+  FHG_PRICE_CAPS, FHG_INCOME_SINGLE, FHG_INCOME_COUPLE,
+  FAM_HG_INCOME_CAP,
+} from "./grants";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -160,8 +164,14 @@ export function calculatePathA(quiz: QuizData): ResultsA {
   // Monthly repayment at MARKET rate (for display)
   const monthlyRepayment = Math.round(pmt(MARKET_RATE, capacity));
 
-  // LMI
-  const lmi = calculateLMI(capacity, purchasePower);
+  // LMI — waived under First Home Guarantee / Family Home Guarantee
+  const isCouple       = buyingSituation === "partner";
+  const isSingleParent = buyingSituation === "single-parent";
+  const schemeCap      = FHG_PRICE_CAPS[state];
+  const qualFHG        = !isSingleParent && combinedGross <= (isCouple ? FHG_INCOME_COUPLE : FHG_INCOME_SINGLE);
+  const qualFam        = isSingleParent  && combinedGross <= FAM_HG_INCOME_CAP;
+  const schemeActive   = purchasePower <= schemeCap && (qualFHG || qualFam);
+  const lmi            = schemeActive ? 0 : calculateLMI(capacity, purchasePower);
 
   // Stamp duty
   const isNewBuild = propertyType === "land";
