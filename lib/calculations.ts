@@ -448,28 +448,103 @@ export function pmtN(annualRate: number, principal: number, months: number): num
   return principal * (r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
 }
 
+// PV annuity with custom term
+function pvAnnuityN(annualRate: number, monthlyPayment: number, months: number): number {
+  if (annualRate === 0) return monthlyPayment * months;
+  const r = annualRate / 12;
+  return monthlyPayment * (1 - Math.pow(1 + r, -months)) / r;
+}
+
+// ─── Path N tax (brackets + Medicare only, no LITO — per spec) ───────────────
+
+function calculateTaxN(grossAnnual: number): { tax: number; net: number } {
+  let tax = 0;
+  if (grossAnnual <= 18_200)       tax = 0;
+  else if (grossAnnual <= 45_000)  tax = (grossAnnual - 18_200) * 0.19;
+  else if (grossAnnual <= 120_000) tax = 5_092 + (grossAnnual - 45_000) * 0.325;
+  else if (grossAnnual <= 180_000) tax = 29_467 + (grossAnnual - 120_000) * 0.37;
+  else                             tax = 51_667 + (grossAnnual - 180_000) * 0.45;
+  const medicare = grossAnnual * 0.02;
+  const total = Math.max(0, tax + medicare);
+  return { tax: total, net: grossAnnual - total };
+}
+
+// ─── Path N HECS (threshold $54,435 per spec) ────────────────────────────────
+
+function calculateHecsN(grossIncome: number): number {
+  if (grossIncome < 54_435) return 0;
+  // ATO schedule thresholds (above $54,435)
+  const THRESHOLDS = [
+    { threshold: 54_435,  rate: 0.01  },
+    { threshold: 60_440,  rate: 0.02  },
+    { threshold: 67_754,  rate: 0.025 },
+    { threshold: 73_110,  rate: 0.03  },
+    { threshold: 79_100,  rate: 0.035 },
+    { threshold: 86_175,  rate: 0.04  },
+    { threshold: 91_339,  rate: 0.045 },
+    { threshold: 100_716, rate: 0.05  },
+    { threshold: 107_214, rate: 0.055 },
+    { threshold: 120_197, rate: 0.06  },
+    { threshold: 128_929, rate: 0.065 },
+    { threshold: 141_848, rate: 0.07  },
+  ];
+  const bracket = [...THRESHOLDS].reverse().find(b => grossIncome >= b.threshold);
+  return bracket ? grossIncome * bracket.rate : 0;
+}
+
+// ─── Path N living expenses ──────────────────────────────────────────────────
+
+function livingExpensesN(situation: BuyingSituation, dependants: number): number {
+  const base = situation === "partner" ? 2_500 : 1_500;
+  return base + dependants * 500;
+}
+
+// ─── Path N LMI (approximate rates per spec) ────────────────────────────────
+
+export function calculateLMI_N(loanAmount: number, propertyValue: number): number {
+  if (propertyValue <= 0 || loanAmount <= 0) return 0;
+  const lvr = loanAmount / propertyValue;
+  if (lvr <= 0.80) return 0;
+  if (lvr <= 0.85) return Math.round(loanAmount * 0.015);  // 1.5%
+  if (lvr <= 0.90) return Math.round(loanAmount * 0.025);  // 2.5%
+  if (lvr <= 0.95) return Math.round(loanAmount * 0.04);   // 4%
+  return Math.round(loanAmount * 0.04);                      // cap at 4%
+}
+
+// ─── Path N results interface ────────────────────────────────────────────────
+
 export interface ResultsN {
-  totalEquity:          number;  // totalPropertyValue - totalLoanBalance (gross, can be 0)
-  usableEquity:         number;  // (totalPropertyValue * 0.8) - totalLoanBalance (floor 0)
-  affordableEquityDraw: number;  // serviceability-capped equity access = min(usableEquity, additionalBorrowing)
-  additionalBorrowing:  number;  // new borrowing capacity after servicing existing debt
-  maxBudget:            number;  // cashSavings + additionalBorrowing (equity is borrowed, not free cash)
-  existingMonthlyRepay: number;  // PMT at MARKET_RATE 25yr on totalLoanBalance
+  // Equity (1+ properties only)
+  totalEquity:          number;  // raw: value - loan
+  usableEquity:         number;  // (value × 0.8) - loan, floor 0
+  isOverleveraged:      boolean;
+
+  // Borrowing
+  additionalBorrowing:  number;  // max new debt (equity draw + new loan combined)
+  maxBudget:            number;  // realistic max property price after costs
+
+  // Repayments
+  existingMonthlyRepay: number;  // PMT at 6.2% over 25yr on current loan
+
+  // Meta
   grossIncome:          number;
-  isOverleveraged:      boolean; // usableEquity was negative (raw)
+  hasProperties:        boolean; // portfolioCount > 0
   qualified:            boolean; // maxBudget >= $500k
 }
 
 /**
  * Compute additional borrowing capacity for Path N.
- * @param quiz          Quiz answers
- * @param extraGrossMonthlyRent  Unshaded gross monthly rent from the NEW investment property
- *                               being purchased (0 for live-in or if not applicable).
- *                               80% shading is applied inside this function.
+ * Serviceability model:
+ *   1. Total assessable = salary + partner + (existing rent × 12 × 0.8) + (new rent × 12 × 0.8)
+ *   2. Apply tax brackets + 2% Medicare → net monthly
+ *   3. Subtract non-mortgage commitments (CC, car, personal, HECS)
+ *   4. Subtract living expenses
+ *   5. PV of surplus at 8.5% over 30yr = max total debt
+ *   6. Additional = max total debt - current loan balance
  */
 export function computeAdditionalBorrowingN(
   quiz: QuizData,
-  extraGrossMonthlyRent = 0,
+  extraAnnualRent = 0,
 ): number {
   const {
     buyingSituation     = "solo",
@@ -484,24 +559,33 @@ export function computeAdditionalBorrowingN(
     dependants          = 0,
   } = quiz;
 
-  // Gross monthly income: salary + partner + 80% of all rental (existing + new)
   const partnerGross = buyingSituation === "partner" ? partnerIncome : 0;
-  const grossMonthlyIncome = (annualIncome + partnerGross) / 12
-    + (monthlyRentalIncome + extraGrossMonthlyRent) * 0.80;
+  const existingRentAnnual = monthlyRentalIncome * 12 * 0.80;
 
-  const hecsAnnual    = hecsDebt > 0 ? calculateHecsRepayment(annualIncome) : 0;
-  const otherMonthly  = (creditCardLimit * 0.038) / 12
+  // Step 3 — Total assessable income
+  const totalAssessable = annualIncome + partnerGross + existingRentAnnual + extraAnnualRent;
+
+  // Apply tax + Medicare → net
+  const { net: netAnnual } = calculateTaxN(totalAssessable);
+  const netMonthly = netAnnual / 12;
+
+  // Step 4 — Non-mortgage commitments
+  const hecsAnnual = hecsDebt > 0 ? calculateHecsN(annualIncome) : 0;
+  const monthlyCommitments = (creditCardLimit * 0.038) / 12
     + carLoanMonthly
     + personalLoanMonthly
     + hecsAnnual / 12;
 
-  const hem     = getHEM(buyingSituation, dependants);
-  const surplus = Math.max(0, grossMonthlyIncome - otherMonthly - hem);
+  // Step 5 — Living expenses
+  const living = livingExpensesN(buyingSituation, dependants);
 
-  // Max total debt at 8.5% assessment rate, then subtract existing loan balance.
-  // Equity draw is borrowed money — it and the new property loan must both fit
-  // within this additional capacity.
-  const maxTotalDebt = pvAnnuity(MIN_ASSESSED_RATE, surplus);
+  // Step 6 — Surplus
+  const surplus = Math.max(0, netMonthly - monthlyCommitments - living);
+
+  // Step 7 — Max total debt at 8.5% over 30yr
+  const maxTotalDebt = pvAnnuityN(MIN_ASSESSED_RATE, surplus, 360);
+
+  // Step 8 — Additional = max total - current loan
   return Math.round(Math.max(0, maxTotalDebt - totalLoanBalance) / 1000) * 1000;
 }
 
@@ -512,33 +596,42 @@ export function calculatePathN(quiz: QuizData): ResultsN {
     partnerIncome      = 0,
     totalPropertyValue = 0,
     totalLoanBalance   = 0,
-    cashSavings        = 0,
+    portfolioCount     = 0,
   } = quiz;
 
-  const additionalBorrowing  = computeAdditionalBorrowingN(quiz);
-  const existingMonthlyRepay = Math.round(pmtN(MARKET_RATE, totalLoanBalance, 25 * 12));
+  const hasProperties = portfolioCount > 0;
+  const additionalBorrowing = computeAdditionalBorrowingN(quiz);
 
-  const rawEquity    = totalPropertyValue - totalLoanBalance;
-  const usableEquity = Math.max(0, totalPropertyValue * 0.8 - totalLoanBalance);
-  const totalEquity  = Math.max(0, rawEquity);
-  const isOverleveraged = rawEquity < 0;
+  // Equity (1+ properties)
+  const rawEquity       = totalPropertyValue - totalLoanBalance;
+  const usableEquity    = Math.max(0, totalPropertyValue * 0.8 - totalLoanBalance);
+  const totalEquity     = Math.max(0, rawEquity);
+  const isOverleveraged = hasProperties && rawEquity < 0;
 
-  const affordableEquityDraw = Math.min(usableEquity, additionalBorrowing);
-  const maxBudget = cashSavings + additionalBorrowing;
-  const qualified  = maxBudget >= 500_000;
+  // Existing repayment at market rate, 25yr (for display)
+  const existingMonthlyRepay = hasProperties
+    ? Math.round(pmtN(MARKET_RATE, totalLoanBalance, 25 * 12))
+    : 0;
 
-  // All users treated as PAYG — 100% of stated income
+  // Max budget = realistic max price after costs (binary search in results screen)
+  // This is a rough estimate for the processing screen preview
+  const cashSavings = quiz.cashSavings ?? 0;
+  const maxBudget   = hasProperties
+    ? cashSavings + additionalBorrowing
+    : cashSavings + additionalBorrowing;
+
+  const qualified   = maxBudget >= 500_000;
   const grossIncome = annualIncome + (buyingSituation === "partner" ? partnerIncome : 0);
 
   return {
     totalEquity,
     usableEquity,
-    affordableEquityDraw,
+    isOverleveraged,
     additionalBorrowing,
     maxBudget,
     existingMonthlyRepay,
     grossIncome,
-    isOverleveraged,
+    hasProperties,
     qualified,
   };
 }

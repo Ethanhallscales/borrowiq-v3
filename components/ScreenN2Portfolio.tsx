@@ -13,6 +13,7 @@ interface Props {
 }
 
 const OPTIONS: { v: number; label: string; sub: string }[] = [
+  { v: 0,  label: "0",  sub: "Previously owned, sold" },
   { v: 1,  label: "1",  sub: "One property" },
   { v: 2,  label: "2",  sub: "Two properties" },
   { v: 99, label: "3+", sub: "Three or more" },

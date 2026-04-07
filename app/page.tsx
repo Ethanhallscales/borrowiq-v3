@@ -523,7 +523,11 @@ export default function Home() {
           <Slide id="N2" direction={direction}>
             <ScreenN2Portfolio
               step={getStepInfo("N2")!.step} totalSteps={getStepInfo("N2")!.total}
-              onComplete={(count: number) => advance("N3", { portfolioCount: count })}
+              onComplete={(count: number) => {
+                // 0 properties: skip property value/loan/rental → go straight to savings
+                const next = count === 0 ? "N5b" : "N3";
+                advance(next, { portfolioCount: count });
+              }}
               onBack={back}
             />
           </Slide>
@@ -597,7 +601,7 @@ export default function Home() {
           <Slide id="N7" direction={direction}>
             <Screen7Commitments
               step={getStepInfo("N7")!.step} totalSteps={getStepInfo("N7")!.total}
-              lockedItems={quiz.totalLoanBalance && quiz.totalLoanBalance > 0
+              lockedItems={(quiz.portfolioCount ?? 0) > 0 && quiz.totalLoanBalance && quiz.totalLoanBalance > 0
                 ? [{ label: "Existing mortgage repayments (estimated)", amount: Math.round(pmtN(MKT, quiz.totalLoanBalance, 25 * 12)) }]
                 : []}
               onComplete={(d: CommitmentsData) => advance("N_proc", asQuiz(d))}
