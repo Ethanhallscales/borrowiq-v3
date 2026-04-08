@@ -42,14 +42,14 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
     { label: "Properties owned", value: portfolioCount === 0 ? "0 (previously owned)" : portfolioCount >= 99 ? "3+" : String(portfolioCount) },
   ];
   if (hasProperties) {
-    summaryRows.push({ label: "Total property value", value: formatCurrency(totalPropertyValue) });
-    summaryRows.push({ label: "Total loan balance", value: formatCurrency(totalLoanBalance) });
+    summaryRows.push({ label: "Total portfolio value", value: formatCurrency(totalPropertyValue) });
+    summaryRows.push({ label: "Total loans", value: formatCurrency(totalLoanBalance) });
   }
-  summaryRows.push({ label: "Gross income", value: isPartner ? `${formatCurrency(annualIncome)} + ${formatCurrency(partnerIncome)} (partner)` : formatCurrency(annualIncome) });
-  summaryRows.push({ label: "Cash savings", value: displaySavings });
-  if (hasProperties && (quiz.monthlyRentalIncome ?? 0) > 0) {
-    summaryRows.push({ label: "Monthly rental income", value: formatCurrency(quiz.monthlyRentalIncome ?? 0) });
+  if ((quiz.monthlyRentalIncome ?? 0) > 0) {
+    summaryRows.push({ label: "Rental income", value: `${formatCurrency(quiz.monthlyRentalIncome ?? 0)}/mo` });
   }
+  summaryRows.push({ label: "Savings", value: displaySavings });
+  summaryRows.push({ label: "Income", value: isPartner ? `${formatCurrency(annualIncome)} + ${formatCurrency(partnerIncome)} (partner)` : formatCurrency(annualIncome) });
 
   return (
     <>
@@ -60,33 +60,35 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
         {/* ── Heading ─────────────────────────────────────────────────────── */}
         <motion.div className="mb-6 text-center"
           initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full"
-            style={{ background: "rgba(34,197,94,0.12)", border: "2px solid rgba(34,197,94,0.4)" }}>
-            <span style={{ fontSize: "1.6rem" }}>✓</span>
-          </div>
-          <h1 style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "clamp(1.8rem,8vw,2.6rem)",
+          <h1 style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "clamp(2rem,9vw,2.8rem)",
             color: "#e6fbff", letterSpacing: "0.04em", lineHeight: 1.1 }}>
-            Thanks for submitting your details
+            We&apos;ve Got Your Details
           </h1>
         </motion.div>
 
-        {/* ── Message ─────────────────────────────────────────────────────── */}
-        <motion.div className="mb-6 rounded-2xl px-4 py-4"
-          style={{ background: "rgba(0,194,255,0.06)", border: "1px solid rgba(0,194,255,0.25)" }}
+        {/* ── Message — glassmorphic card ─────────────────────────────────── */}
+        <motion.div className="mb-6 rounded-2xl px-5 py-5"
+          style={{ background: "rgba(4,30,58,0.45)", border: "1px solid rgba(0,194,255,0.2)",
+            backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+            boxShadow: "0 4px 32px -8px rgba(0,194,255,0.12)" }}
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4 }}>
           <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.88rem",
-            color: "rgba(230,251,255,0.75)", lineHeight: 1.65 }}>
-            Due to the complexity of your situation, one of our brokers will personally review your details and send you a tailored breakdown via email. This usually takes less than 24 hours.
+            color: "rgba(230,251,255,0.8)", lineHeight: 1.7 }}>
+            Your situation is more complex than a simple calculator can handle — and honestly, that&apos;s a good thing. It means you&apos;ve got options.
+          </p>
+          <p className="mt-3" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.88rem",
+            color: "rgba(230,251,255,0.8)", lineHeight: 1.7 }}>
+            One of our brokers will personally review everything you&apos;ve submitted and email you a tailored breakdown of your position within 24 hours. No generic numbers, no guesswork — just a real assessment from someone who does this every day.
           </p>
         </motion.div>
 
         {/* ── Summary of entered data ─────────────────────────────────────── */}
-        <motion.div className="mb-6 rounded-2xl px-4 py-4"
+        <motion.div className="mb-6 rounded-2xl px-5 py-4"
           style={{ background: "rgba(4,30,58,0.7)", border: "1px solid rgba(10,61,107,0.55)" }}
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, duration: 0.4 }}>
-          <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "0.8rem", letterSpacing: "0.12em",
-            color: "rgba(0,194,255,0.5)", textTransform: "uppercase", marginBottom: 10 }}>
-            Your details
+          <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.82rem",
+            color: "rgba(230,251,255,0.45)", marginBottom: 12 }}>
+            Here&apos;s what we received from you:
           </p>
           {summaryRows.map((row, i) => (
             <div key={i} style={{
@@ -109,11 +111,11 @@ export default function ScreenN9ResultsB({ quiz }: Props) {
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.4 }}>
           <p style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.35rem", color: "#22c55e",
             letterSpacing: "0.04em", marginBottom: 6 }}>
-            Want to speed things up?
+            Want answers faster?
           </p>
           <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.82rem",
             color: "rgba(230,251,255,0.55)", lineHeight: 1.55, marginBottom: 14 }}>
-            Book a free 15-minute call and we&apos;ll walk through everything live.
+            Skip the wait and jump on a free 15-minute call. We&apos;ll have your details pulled up and ready to go.
           </p>
           <a href={CALENDLY_URL} target="_blank" rel="noreferrer" onClick={() => trackSchedule("next_home")}
             className="block w-full rounded-xl py-3.5 text-base font-semibold text-center"
