@@ -102,6 +102,7 @@ export default function OceanSlider({
             background: "#00C2FF",
             boxShadow: "0 0 16px 4px rgba(0,194,255,0.5)",
             border: "2px solid rgba(255,255,255,0.25)",
+            willChange: "transform",
           }}
         />
         {/* Hidden native range input layered on top */}

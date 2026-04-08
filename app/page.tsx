@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import dynamic from "next/dynamic";
 
 import type {
   ScreenId, QuizData,
@@ -21,7 +22,11 @@ import type { IncomeData }     from "@/components/Screen5Income";
 import Screen6Deposit          from "@/components/Screen6Deposit";
 import Screen7Commitments      from "@/components/Screen7Commitments";
 import type { CommitmentsData } from "@/components/Screen7Commitments";
-import Screen10ResultsA        from "@/components/Screen10ResultsA";
+// Results screens — lazy loaded (only fetched when user reaches results)
+const Screen10ResultsA = dynamic(() => import("@/components/Screen10ResultsA"), { ssr: false });
+const ScreenB8ResultsB = dynamic(() => import("@/components/ScreenB8ResultsB"), { ssr: false });
+const ScreenN9ResultsB = dynamic(() => import("@/components/ScreenN9ResultsB"), { ssr: false });
+const ScreenC7ResultsC = dynamic(() => import("@/components/ScreenC7ResultsC"), { ssr: false });
 
 // ── Flow B ────────────────────────────────────────────────────────────────────
 import ScreenB1Goal            from "@/components/ScreenB1Goal";
@@ -29,7 +34,6 @@ import ScreenB2CurrentProperty from "@/components/ScreenB2CurrentProperty";
 import ScreenB3CurrentLoan     from "@/components/ScreenB3CurrentLoan";
 import ScreenB5TargetProperty  from "@/components/ScreenB5TargetProperty";
 import ScreenB6Commitments     from "@/components/ScreenB6Commitments";
-import ScreenB8ResultsB        from "@/components/ScreenB8ResultsB";
 
 // ── Flow N ────────────────────────────────────────────────────────────────────
 import ScreenN1Goal          from "@/components/ScreenN1Goal";
@@ -38,14 +42,12 @@ import ScreenN3PropertyValue from "@/components/ScreenN3PropertyValue";
 import ScreenN4LoanBalance   from "@/components/ScreenN4LoanBalance";
 import ScreenN5RentalIncome  from "@/components/ScreenN5RentalIncome";
 import ScreenN5bSavings      from "@/components/ScreenN5bSavings";
-import ScreenN9ResultsB      from "@/components/ScreenN9ResultsB";
 
 // ── Flow C ────────────────────────────────────────────────────────────────────
 import ScreenC1CurrentLoan     from "@/components/ScreenC1CurrentLoan";
 import ScreenC2Offset          from "@/components/ScreenC2Offset";
 import ScreenC3Savings         from "@/components/ScreenC3Savings";
 import ScreenC4PropertyValue   from "@/components/ScreenC4PropertyValue";
-import ScreenC7ResultsC        from "@/components/ScreenC7ResultsC";
 
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 import ProcessingScreen from "@/components/ui/ProcessingScreen";
@@ -132,6 +134,7 @@ function Slide({ id, direction, children }: { id: string; direction: number; chi
       exit="exit"
       transition={transition}
       className="absolute inset-0"
+      style={{ willChange: "transform, opacity" }}
     >
       {children}
     </motion.div>

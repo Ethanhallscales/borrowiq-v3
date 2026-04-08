@@ -3,6 +3,16 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BlobBackground } from "@/components/ui/MorphingBlob";
+
+// ─── Debounce hook — slider moves instantly, calcs defer 150ms ──────────────
+function useDebouncedValue<T>(value: T, ms = 150): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return debounced;
+}
 import { ResultsPopup } from "@/components/ui/ResultsPopup";
 import type { QuizData, AustralianState } from "@/lib/types";
 import { calculatePathA, formatCurrency, pmt, calculateLMI, MARKET_RATE } from "@/lib/calculations";
@@ -502,6 +512,7 @@ export default function Screen10ResultsA({ quiz }: Props) {
   []);
 
   const [selectedPrice, setSelectedPrice] = useState(smartDefault.price);
+  const debouncedPrice = useDebouncedValue(selectedPrice);
   const [hasDragged, setHasDragged]       = useState(false);
 
   // Qualification-based banner
@@ -527,13 +538,13 @@ export default function Screen10ResultsA({ quiz }: Props) {
   const displaySavings    = formatCurrency(deposit);
 
   const bd = useMemo(() =>
-    computeAtPrice(selectedPrice, deposit, capacity, grossIncome, state, isCouple, isSingleParent, isNewBuild),
-    [selectedPrice, deposit, capacity, grossIncome, state, isCouple, isSingleParent, isNewBuild],
+    computeAtPrice(debouncedPrice, deposit, capacity, grossIncome, state, isCouple, isSingleParent, isNewBuild),
+    [debouncedPrice, deposit, capacity, grossIncome, state, isCouple, isSingleParent, isNewBuild],
   );
 
   const schemeCards = useMemo(() =>
-    buildSchemeCards(grossIncome, selectedPrice, state, isCouple, isSingleParent, isNewBuild),
-    [grossIncome, selectedPrice, state, isCouple, isSingleParent, isNewBuild],
+    buildSchemeCards(grossIncome, debouncedPrice, state, isCouple, isSingleParent, isNewBuild),
+    [grossIncome, debouncedPrice, state, isCouple, isSingleParent, isNewBuild],
   );
 
   // Tweened values for smooth breakdown animation
@@ -715,7 +726,8 @@ export default function Screen10ResultsA({ quiz }: Props) {
                 width: 44, height: 44, borderRadius: "50%",
                 background: "linear-gradient(135deg,#0056A6,#00C2FF)",
                 boxShadow: "0 0 28px 8px rgba(0,194,255,0.4), 0 2px 12px rgba(0,0,0,0.4)",
-                border: "3px solid rgba(255,255,255,0.3)", zIndex: 3 }} />
+                border: "3px solid rgba(255,255,255,0.3)", zIndex: 3,
+                willChange: "transform" }} />
               {/* Native input */}
               <input type="range" min={SLIDER_MIN} max={SLIDER_MAX} step={STEP}
                 value={selectedPrice}

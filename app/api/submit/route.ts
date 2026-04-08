@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     try {
       await buildAndSend(quiz, webhookUrl);
     } catch (err) {
-      console.error("[BorrowIQ] webhook send failed:", err);
+      // Webhook failure is non-blocking — swallow silently
     }
   }
 
@@ -110,7 +110,6 @@ async function buildAndSend(quiz: QuizData, webhookUrl: string) {
     };
 
   } else {
-    console.warn("[BorrowIQ] unknown path, skipping webhook:", pathId);
     return;
   }
 
@@ -122,24 +121,14 @@ async function buildAndSend(quiz: QuizData, webhookUrl: string) {
     payload[k] = v ?? "";
   }
 
-  console.log("[BorrowIQ] sending webhook payload:", JSON.stringify(payload, null, 2));
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 
-  try {
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    let body = "";
-    try { body = await res.text(); } catch { /* ignore read errors */ }
-
-    if (res.ok) {
-      console.log("[BorrowIQ] webhook success:", res.status, body.slice(0, 500));
-    } else {
-      console.error("[BorrowIQ] webhook non-OK response:", res.status, res.statusText, body.slice(0, 500));
-    }
-  } catch (err) {
-    console.error("[BorrowIQ] webhook fetch failed:", err);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`webhook ${res.status}: ${body.slice(0, 200)}`);
   }
 }
