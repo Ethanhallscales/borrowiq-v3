@@ -31,20 +31,27 @@ export const FHOG_AMOUNTS: Record<AustralianState, { amount: number; maxPrice: n
   NT:  { amount: 10_000, maxPrice: 0,       newBuildOnly: true  }, // no price cap
 };
 
-// ─── First Home Guarantee (NHFIC) ─────────────────────────────────────────────
-// Property price caps by state (2024–25)
+// ─── First Home Guarantee (Housing Australia, from 1 Oct 2025) ────────────────
+// No income caps. No place limits. Available to Australian citizens/PRs who are
+// first home buyers or have not owned property in the last 10 years.
+// Property price caps by state (October 2025 figures):
 
 export const FHG_PRICE_CAPS: Record<AustralianState, number> = {
-  NSW: 900_000, VIC: 800_000, QLD: 700_000, WA: 600_000,
-  SA:  600_000, TAS: 550_000, ACT: 750_000, NT: 600_000,
+  QLD: 1_000_000,   // Brisbane, Gold Coast, Sunshine Coast
+  NSW: 1_500_000,   // Sydney
+  VIC:   950_000,   // Melbourne, Geelong
+  WA:    850_000,   // Perth
+  SA:    900_000,   // Adelaide
+  TAS:   700_000,
+  ACT:   900_000,
+  NT:    700_000,
 };
-export const FHG_INCOME_SINGLE = 125_000;
-export const FHG_INCOME_COUPLE = 200_000;
 export const FHG_MIN_DEPOSIT   = 0.05;   // 5%
 
-// ─── Family Home Guarantee ────────────────────────────────────────────────────
+// ─── Family Home Guarantee (from 1 Oct 2025) ─────────────────────────────────
+// No income caps. Single parents or eligible single guardians with at least one
+// dependant. 2% minimum deposit, LMI waived.
 
-export const FAM_HG_INCOME_CAP   = 125_000;
 export const FAM_HG_MIN_DEPOSIT  = 0.02;   // 2%
 // Price caps same as FHG
 
@@ -99,11 +106,9 @@ export function calculateGrants(quiz: QuizData, totalIncome: number): GrantResul
     });
   }
 
-  // ── First Home Guarantee ──────────────────────────────────────────────────
-  const fhgIncCap  = isPartner ? FHG_INCOME_COUPLE : FHG_INCOME_SINGLE;
+  // ── First Home Guarantee (from 1 Oct 2025 — no income caps) ────────────
   const hasMinDep  = deposit / estimatedPrice >= FHG_MIN_DEPOSIT;
   const fhgPricOk  = estimatedPrice <= fhgCap;
-  const fhgIncomeOk = combinedIncome <= fhgIncCap;
 
   if (isSingleParent) {
     // single parents use Family Home Guarantee (below), not FHG
@@ -112,18 +117,17 @@ export function calculateGrants(quiz: QuizData, totalIncome: number): GrantResul
       cashValue: 0, status: "not-eligible",
       reason: "As a single parent you qualify for the superior Family Home Guarantee instead.",
     });
-  } else if (fhgIncomeOk && hasMinDep && fhgPricOk) {
+  } else if (hasMinDep && fhgPricOk) {
     results.push({
       id: "fhg", name: "First Home Guarantee", shortName: "FHG",
       cashValue: 0, status: "eligible",
       reason: `LMI waived — buy with as little as 5% deposit (saves $8k–$20k+ in LMI).`,
-      detail: "Government guarantees up to 15% so you avoid Lenders Mortgage Insurance.",
+      detail: "Government guarantees up to 15% so you avoid Lenders Mortgage Insurance. No income limits apply.",
     });
   } else {
     const reasons = [];
-    if (!fhgIncomeOk) reasons.push(`income exceeds $${(fhgIncCap/1000).toFixed(0)}k cap`);
     if (!hasMinDep)   reasons.push("deposit below 5%");
-    if (!fhgPricOk)   reasons.push(`property exceeds $${(fhgCap/1000).toFixed(0)}k cap`);
+    if (!fhgPricOk)   reasons.push(`property exceeds ${`$${(fhgCap/1000).toFixed(0)}k`} cap`);
     results.push({
       id: "fhg", name: "First Home Guarantee", shortName: "FHG",
       cashValue: 0, status: "not-eligible",
@@ -131,27 +135,25 @@ export function calculateGrants(quiz: QuizData, totalIncome: number): GrantResul
     });
   }
 
-  // ── Family Home Guarantee ─────────────────────────────────────────────────
-  if (isSingleParent && combinedIncome <= FAM_HG_INCOME_CAP && fhgPricOk) {
+  // ── Family Home Guarantee (from 1 Oct 2025 — no income caps) ─────────
+  if (isSingleParent && fhgPricOk) {
     results.push({
       id: "fam-hg", name: "Family Home Guarantee", shortName: "FHG Family",
       cashValue: 0, status: "eligible",
-      reason: "Buy with just 2% deposit — LMI waived. Designed for single parents.",
-      detail: "Government guarantees up to 18% of the property value.",
+      reason: "Buy with just 2% deposit — LMI waived. For single parents with at least one dependant.",
+      detail: "Government guarantees up to 18% of the property value. No income limits apply.",
     });
   } else if (!isSingleParent) {
     results.push({
       id: "fam-hg", name: "Family Home Guarantee", shortName: "FHG Family",
       cashValue: 0, status: "not-eligible",
-      reason: "This scheme is for single parents or eligible single guardians only.",
+      reason: "This scheme is for single parents or eligible single guardians with at least one dependant.",
     });
   } else {
     results.push({
       id: "fam-hg", name: "Family Home Guarantee", shortName: "FHG Family",
       cashValue: 0, status: "not-eligible",
-      reason: combinedIncome > FAM_HG_INCOME_CAP
-        ? `Income exceeds $${(FAM_HG_INCOME_CAP/1000).toFixed(0)}k cap.`
-        : `Property price exceeds $${(fhgCap/1000).toFixed(0)}k cap.`,
+      reason: `Property price exceeds ${`$${(fhgCap/1000).toFixed(0)}k`} cap.`,
     });
   }
 

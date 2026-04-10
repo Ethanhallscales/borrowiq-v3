@@ -18,10 +18,7 @@ import type { QuizData, AustralianState } from "@/lib/types";
 import { calculatePathA, formatCurrency, pmt, calculateLMI, MARKET_RATE } from "@/lib/calculations";
 import { trackFHBResults, trackSchedule, trackInitiateCheckout } from "@/lib/pixel";
 import { calculateStampDuty } from "@/lib/stamp-duty";
-import {
-  FHG_PRICE_CAPS, FHG_INCOME_SINGLE, FHG_INCOME_COUPLE,
-  FAM_HG_INCOME_CAP, FHOG_AMOUNTS,
-} from "@/lib/grants";
+import { FHG_PRICE_CAPS, FHOG_AMOUNTS } from "@/lib/grants";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -135,17 +132,15 @@ function computeAtPrice(
 ): PriceBreakdown {
   const schemeCap = FHG_PRICE_CAPS[state];
 
-  // Family Home Guarantee (single parents, 2% min deposit) takes priority over FHG
-  const qualFam = isSingleParent && grossIncome <= FAM_HG_INCOME_CAP;
-  const qualFHG = !isSingleParent && grossIncome <= (isCouple ? FHG_INCOME_COUPLE : FHG_INCOME_SINGLE);
-  const schemeActive = price <= schemeCap && (qualFam || qualFHG);
+  // From 1 Oct 2025: no income caps — eligible if price ≤ state cap
+  const schemeActive = price <= schemeCap;
 
   let schemeName   = "";
   let schemeMinDep = 0;
   const schemeGovPct = 0; // no co-ownership schemes — LMI waived only
   if (schemeActive) {
-    if (qualFam) { schemeName = "Family Home Guarantee"; schemeMinDep = 0.02; }
-    else         { schemeName = "First Home Guarantee";  schemeMinDep = 0.05; }
+    if (isSingleParent) { schemeName = "Family Home Guarantee"; schemeMinDep = 0.02; }
+    else                { schemeName = "First Home Guarantee";  schemeMinDep = 0.05; }
   }
 
   const { payable: stampDuty, concession: stampDutySaved } =
@@ -219,7 +214,6 @@ function getSmartDefault(
   isCouple:       boolean,
   isSingleParent: boolean,
   isNewBuild:     boolean,
-  incomeQualAny:  boolean,
   schemeCap:      number,
   SLIDER_MAX:     number,
 ): SmartDefault {
@@ -232,10 +226,9 @@ function getSmartDefault(
 
   // ── Scenario A: scheme at max feasible price ──
   let scenarioA_price = 0;
-  if (incomeQualAny) {
+  {
     // Family Home Guarantee: 2% min deposit; First Home Guarantee: 5% min deposit
-    // No co-ownership schemes — govPct always 0
-    const schemeMinDep = (isSingleParent && grossIncome <= FAM_HG_INCOME_CAP) ? 0.02 : 0.05;
+    const schemeMinDep = isSingleParent ? 0.02 : 0.05;
     const govFactor = 1 - schemeMinDep;
     const maxByCapacity = govFactor > 0 ? snap(capacity / govFactor, STEP) : schemeCap;
     const candidateA = clamp(snap(Math.min(schemeCap, maxByCapacity), STEP), SLIDER_MIN, SLIDER_MAX);
@@ -323,7 +316,6 @@ function getSmartDefault(
 
 function getBanner(
   bd: PriceBreakdown,
-  incomeQualAny: boolean,
   schemeCap: number,
 ): BannerInfo {
   // Red: can't afford
@@ -333,7 +325,7 @@ function getBanner(
       : `This price exceeds your borrowing capacity — lower the price to find your sweet spot.`;
     return { variant: "red", icon: "⛔", title: "Not quite there at this price", detail: shortfall };
   }
-  // Green: scheme active
+  // Green: scheme active (no income caps — all first home buyers qualify)
   if (bd.schemeActive) {
     const depPct = Math.round(bd.schemeMinDepPct * 100);
     const sdNote = bd.stampDuty === 0 ? " · $0 stamp duty" : "";
@@ -343,28 +335,11 @@ function getBanner(
       detail: `${depPct}% minimum deposit · LMI completely waived${sdNote} · You keep ${formatCurrency(bd.cashBuffer)}`,
     };
   }
-  // Amber: above scheme cap
-  if (incomeQualAny) {
-    return {
-      variant: "amber", icon: "⚠",
-      title: `Government schemes unavailable above ${formatCurrency(schemeCap)}`,
-      detail: `Drag below ${formatCurrency(schemeCap)} to unlock — minimum deposit, no LMI.`,
-    };
-  }
-  // Blue: 20%+ deposit, no LMI
-  if (bd.lmi === 0) {
-    const depPct = bd.price > 0 ? Math.round((bd.propertyDeposit / bd.price) * 100) : 0;
-    return {
-      variant: "blue", icon: "✓",
-      title: `Strong ${depPct}% deposit — no LMI`,
-      detail: `Above 20% deposit means LMI is completely avoided. You keep ${formatCurrency(bd.cashBuffer)}.`,
-    };
-  }
-  // Orange: LMI applies (added to loan, not savings)
+  // Amber: above scheme cap — all first home buyers qualify, so this always shows above cap
   return {
-    variant: "orange", icon: "⚠",
-    title: `LMI of ${formatCurrency(bd.lmi)} added to your loan`,
-    detail: `Your deposit is ${Math.round(bd.depositPct * 100)}% — LMI is capitalised into the loan, not taken from your savings. You keep ${formatCurrency(bd.cashBuffer)}.`,
+    variant: "amber", icon: "⚠",
+    title: `Government schemes unavailable above ${formatCurrency(schemeCap)}`,
+    detail: `Drag below ${formatCurrency(schemeCap)} to unlock — minimum deposit, no LMI.`,
   };
 }
 
@@ -383,22 +358,20 @@ function buildSchemeCards(
   const cards: SchemeCard[] = [];
 
   if (isSingleParent) {
-    const ok = grossIncome <= FAM_HG_INCOME_CAP;
     cards.push({
       id: "fhg-fam", name: "Family Home Guarantee",
       what: "Government guarantees 18% of your loan — single parents buy with just 2% deposit",
-      benefit: "2% deposit · LMI completely waived",
+      benefit: "2% deposit · LMI completely waived · no income limits",
       capNote: `Homes under ${formatCurrency(cap)}`,
-      status: !ok ? "not-eligible" : selectedPrice <= cap ? "active" : "available",
+      status: selectedPrice <= cap ? "active" : "available",
     });
   } else {
-    const ok = grossIncome <= (isCouple ? FHG_INCOME_COUPLE : FHG_INCOME_SINGLE);
     cards.push({
       id: "fhg", name: "First Home Guarantee",
       what: "Government guarantees 15% of your loan — buy with 5% deposit and avoid LMI entirely",
-      benefit: "5% deposit · LMI waived · saves $8k–$25k+",
+      benefit: "5% deposit · LMI waived · no income limits",
       capNote: `Homes under ${formatCurrency(cap)}`,
-      status: !ok ? "not-eligible" : selectedPrice <= cap ? "active" : "available",
+      status: selectedPrice <= cap ? "active" : "available",
     });
   }
 
@@ -496,9 +469,6 @@ export default function Screen10ResultsA({ quiz }: Props) {
   const isNewBuild     = quiz.propertyType === "land";
 
   const schemeCap = FHG_PRICE_CAPS[state];
-  const qualFam   = isSingleParent && grossIncome <= FAM_HG_INCOME_CAP;
-  const qualFHG   = !isSingleParent && grossIncome <= (isCouple ? FHG_INCOME_COUPLE : FHG_INCOME_SINGLE);
-  const incomeQualAny = qualFam || qualFHG;
 
   // Max slider = capacity + all savings after min costs
   const SLIDER_MAX = Math.max(SLIDER_MIN + 50_000,
@@ -507,7 +477,7 @@ export default function Screen10ResultsA({ quiz }: Props) {
   // Smart default — runs once
   const smartDefault = useMemo(() =>
     getSmartDefault(capacity, deposit, grossIncome, state, isCouple, isSingleParent, isNewBuild,
-      incomeQualAny, schemeCap, SLIDER_MAX),
+      schemeCap, SLIDER_MAX),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
@@ -563,12 +533,9 @@ export default function Screen10ResultsA({ quiz }: Props) {
     ((selectedPrice - SLIDER_MIN) / (SLIDER_MAX - SLIDER_MIN)) * 100));
   const capPct = Math.max(0, Math.min(100,
     ((schemeCap - SLIDER_MIN) / (SLIDER_MAX - SLIDER_MIN)) * 100));
-  const lvrThresholdPrice = snap(capacity / 0.80, STEP); // 80% LVR threshold price
-  const lvrPct = Math.max(0, Math.min(100,
-    ((lvrThresholdPrice - SLIDER_MIN) / (SLIDER_MAX - SLIDER_MIN)) * 100));
 
   // Context banner
-  const bannerInfo   = getBanner(bd, incomeQualAny, schemeCap);
+  const bannerInfo   = getBanner(bd, schemeCap);
   const bannerKey    = bannerInfo.variant + (bd.schemeActive ? bd.schemeName : "");
 
   // CTA state
@@ -696,23 +663,9 @@ export default function Screen10ResultsA({ quiz }: Props) {
                     : bannerInfo.variant === "red"
                     ? "linear-gradient(to right,#dc2626,#ef4444)"
                     : "linear-gradient(to right,#0076BE,#00C2FF)" }} />
-              {/* 80% LVR threshold marker */}
-              {!incomeQualAny && lvrPct > 4 && lvrPct < 96 && (
-                <div className="absolute" style={{
-                  left: `${lvrPct}%`, top: "50%", transform: "translate(-50%,-50%)",
-                  width: 2, height: 20, borderRadius: 1,
-                  background: selectedPrice <= lvrThresholdPrice
-                    ? "rgba(0,194,255,0.6)" : "rgba(251,146,60,0.5)",
-                  zIndex: 2 }}>
-                  <div style={{ position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)",
-                    fontFamily: "var(--font-dm-sans)", fontSize: "0.54rem", whiteSpace: "nowrap",
-                    color: "rgba(230,251,255,0.35)" }}>
-                    20% dep
-                  </div>
-                </div>
-              )}
+              {/* 80% LVR threshold marker removed — all FHBs qualify for scheme now */}
               {/* Scheme cap marker */}
-              {incomeQualAny && capPct > 2 && capPct < 98 && (
+              {capPct > 2 && capPct < 98 && (
                 <div className="absolute" style={{
                   left: `${capPct}%`, top: "50%", transform: "translate(-50%,-50%)",
                   width: 3, height: 24, borderRadius: 2,
@@ -740,18 +693,10 @@ export default function Screen10ResultsA({ quiz }: Props) {
             <div className="mt-2 flex justify-between items-end"
               style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.67rem" }}>
               <span style={{ color: "rgba(230,251,255,0.2)" }}>{formatCurrency(SLIDER_MIN)}</span>
-              {incomeQualAny && (
-                <div className="text-center" style={{ color: selectedPrice <= schemeCap ? "rgba(34,197,94,0.7)" : "rgba(245,158,11,0.45)", transition: "color 0.3s" }}>
-                  <div>Scheme cap</div>
-                  <div style={{ fontSize: "0.72rem", fontWeight: 600 }}>{formatCurrency(schemeCap)}</div>
-                </div>
-              )}
-              {!incomeQualAny && (
-                <div className="text-center" style={{ color: selectedPrice <= lvrThresholdPrice ? "rgba(0,194,255,0.5)" : "rgba(251,146,60,0.4)", transition: "color 0.3s" }}>
-                  <div>No LMI below</div>
-                  <div style={{ fontSize: "0.72rem", fontWeight: 600 }}>{formatCurrency(lvrThresholdPrice)}</div>
-                </div>
-              )}
+              <div className="text-center" style={{ color: selectedPrice <= schemeCap ? "rgba(34,197,94,0.7)" : "rgba(245,158,11,0.45)", transition: "color 0.3s" }}>
+                <div>Scheme cap</div>
+                <div style={{ fontSize: "0.72rem", fontWeight: 600 }}>{formatCurrency(schemeCap)}</div>
+              </div>
               <span style={{ color: "rgba(230,251,255,0.2)" }}>{formatCurrency(SLIDER_MAX)}</span>
             </div>
           </motion.div>
@@ -889,31 +834,14 @@ export default function Screen10ResultsA({ quiz }: Props) {
           {/* ── SECTION 6 — Government scheme cards ────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45, duration: 0.4 }}>
-            {incomeQualAny ? (
-              <>
-                <p className="mb-1" style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.2rem",
-                  color: "#e6fbff", letterSpacing: "0.04em" }}>
-                  Government Schemes
-                </p>
-                <p className="mb-3" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.7rem",
-                  color: "rgba(230,251,255,0.3)" }}>
-                  Status updates live as you move the slider above.
-                </p>
-              </>
-            ) : (
-              <div className="mb-3 rounded-xl px-4 py-3"
-                style={{ background: "rgba(0,194,255,0.05)", border: "1px solid rgba(0,194,255,0.2)" }}>
-                <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.78rem",
-                  color: "#00C2FF", fontWeight: 600, marginBottom: 4 }}>
-                  Government schemes: income above thresholds
-                </p>
-                <p style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.73rem",
-                  color: "rgba(0,194,255,0.65)", lineHeight: 1.5 }}>
-                  The good news — your borrowing power is strong. Use the slider to find your
-                  ideal price point. The LMI threshold marker shows exactly where LMI kicks in.
-                </p>
-              </div>
-            )}
+            <p className="mb-1" style={{ fontFamily: "var(--font-bebas-neue)", fontSize: "1.2rem",
+              color: "#e6fbff", letterSpacing: "0.04em" }}>
+              Government Schemes
+            </p>
+            <p className="mb-3" style={{ fontFamily: "var(--font-dm-sans)", fontSize: "0.7rem",
+              color: "rgba(230,251,255,0.3)" }}>
+              Status updates live as you move the slider above.
+            </p>
             <div className="flex flex-col gap-2">
               {schemeCards.map(card => {
                 const isActive  = card.status === "active";
