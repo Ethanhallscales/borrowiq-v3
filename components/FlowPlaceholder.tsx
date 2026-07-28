@@ -8,7 +8,6 @@ import type { Flow } from "@/lib/types";
 const FLOW_LABELS: Record<Flow, { label: string; colour: string }> = {
   A: { label: "First Home Buyer",    colour: "#00C2FF" },
   B: { label: "Next Property",       colour: "#7FFFFF" },
-  C: { label: "Loan Review",         colour: "#00C2FF" },
 };
 
 interface Props {

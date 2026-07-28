@@ -10,7 +10,7 @@ import type {
   LoanType, PropertyGoal, CurrentPropPlan, NextPropertyGoal,
 } from "@/lib/types";
 import { getStepInfo } from "@/lib/types";
-import { calculatePathA, calculatePathB, calculatePathN, calculatePathC, formatCurrency, pmtN, MARKET_RATE as MKT } from "@/lib/calculations";
+import { calculatePathA, calculatePathB, calculatePathN, formatCurrency, pmtN, MARKET_RATE as MKT } from "@/lib/calculations";
 
 // ── Flow A ────────────────────────────────────────────────────────────────────
 import Screen0EntryFork        from "@/components/Screen0EntryFork";
@@ -26,7 +26,6 @@ import type { CommitmentsData } from "@/components/Screen7Commitments";
 const Screen10ResultsA = dynamic(() => import("@/components/Screen10ResultsA"), { ssr: false });
 const ScreenB8ResultsB = dynamic(() => import("@/components/ScreenB8ResultsB"), { ssr: false });
 const ScreenN9ResultsB = dynamic(() => import("@/components/ScreenN9ResultsB"), { ssr: false });
-const ScreenC7ResultsC = dynamic(() => import("@/components/ScreenC7ResultsC"), { ssr: false });
 
 // ── Flow B ────────────────────────────────────────────────────────────────────
 import ScreenB1Goal            from "@/components/ScreenB1Goal";
@@ -42,12 +41,6 @@ import ScreenN3PropertyValue from "@/components/ScreenN3PropertyValue";
 import ScreenN4LoanBalance   from "@/components/ScreenN4LoanBalance";
 import ScreenN5RentalIncome  from "@/components/ScreenN5RentalIncome";
 import ScreenN5bSavings      from "@/components/ScreenN5bSavings";
-
-// ── Flow C ────────────────────────────────────────────────────────────────────
-import ScreenC1CurrentLoan     from "@/components/ScreenC1CurrentLoan";
-import ScreenC2Offset          from "@/components/ScreenC2Offset";
-import ScreenC3Savings         from "@/components/ScreenC3Savings";
-import ScreenC4PropertyValue   from "@/components/ScreenC4PropertyValue";
 
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 import ProcessingScreen from "@/components/ui/ProcessingScreen";
@@ -83,7 +76,6 @@ function submitLead(quiz: QuizData, contact: ContactData) {
 const PATH_FIRST: Record<string, ScreenId> = {
   "first-home":    "A1",
   "next-property": "N1",
-  "review-loan":   "C1",
 };
 
 // ─── Processing messages ──────────────────────────────────────────────────────
@@ -101,13 +93,6 @@ const PROC_B = [
   "Assessing additional borrowing capacity...",
   "Modelling your property scenarios...",
   "Building your move plan...",
-];
-
-const PROC_C = [
-  "Reviewing your current rate...",
-  "Calculating offset savings...",
-  "Comparing market rates...",
-  "Building your savings report...",
 ];
 
 const PROC_N = [
@@ -178,10 +163,6 @@ export default function Home() {
   // Blurred preview values for processing screens
   const blurA = useMemo(() => formatCurrency(calculatePathA(quiz).purchasePower), [quiz]);
   const blurB = useMemo(() => formatCurrency(calculatePathB(quiz).totalBudget),   [quiz]);
-  const blurC = useMemo(
-    () => formatCurrency(calculatePathC(quiz).annualSavings) + "/yr",
-    [quiz]
-  );
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -195,7 +176,7 @@ export default function Home() {
             <Screen0EntryFork
               onComplete={(path) => {
                 trackViewContent("borrowiq_start");
-                const ghlPath = path === "first-home" ? "first_home_buyer" : path === "next-property" ? "next_home" : "refinance";
+                const ghlPath = path === "first-home" ? "first_home_buyer" : "next_home";
                 trackPathSelected(ghlPath);
                 advance(PATH_FIRST[path], { path });
               }}
@@ -418,93 +399,6 @@ export default function Home() {
         {screen === "B_results" && (
           <Slide id="B_results" direction={direction}>
             <ScreenB8ResultsB quiz={quiz} />
-          </Slide>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════
-            FLOW C — Review current loan
-        ════════════════════════════════════════════════════════════════════ */}
-
-        {screen === "C1" && (
-          <Slide id="C1" direction={direction}>
-            <ScreenC1CurrentLoan
-              step={stepInfo!.step} totalSteps={stepInfo!.total}
-              onComplete={(balance: number, rate: number, type: LoanType) =>
-                advance("C2", {
-                  currentLoanBalance: balance,
-                  currentRate: rate,
-                  currentLoanType: type,
-                })
-              }
-              onBack={back}
-            />
-          </Slide>
-        )}
-
-        {screen === "C2" && (
-          <Slide id="C2" direction={direction}>
-            <ScreenC2Offset
-              step={stepInfo!.step} totalSteps={stepInfo!.total}
-              currentRate={quiz.currentRate ?? 0.065}
-              onComplete={(hasOffset: boolean, balance: number) =>
-                advance("C3", { hasOffset, offsetBalance: balance })
-              }
-              onBack={back}
-            />
-          </Slide>
-        )}
-
-        {screen === "C3" && (
-          <Slide id="C3" direction={direction}>
-            <ScreenC3Savings
-              step={stepInfo!.step} totalSteps={stepInfo!.total}
-              currentRate={quiz.currentRate ?? 0.065}
-              onComplete={(savings: number) => advance("C4", { otherSavings: savings })}
-              onBack={back}
-            />
-          </Slide>
-        )}
-
-        {screen === "C4" && (
-          <Slide id="C4" direction={direction}>
-            <ScreenC4PropertyValue
-              step={stepInfo!.step} totalSteps={stepInfo!.total}
-              loanBalance={quiz.currentLoanBalance ?? 0}
-              onComplete={(value: number) => advance("C_proc", { propertyValue: value })}
-              onBack={back}
-            />
-          </Slide>
-        )}
-
-        {screen === "C_proc" && (
-          <Slide id="C_proc" direction={direction}>
-            <ProcessingScreen
-              messages={PROC_C}
-              blurredValue={blurC}
-              onComplete={() => advance("C_contact")}
-            />
-          </Slide>
-        )}
-
-        {screen === "C_contact" && (
-          <Slide id="C_contact" direction={direction}>
-            <ContactCapture
-              heading="Your Savings Report Is Ready"
-              subheading="See exactly how much you could save — for free."
-              onSubmit={(d: ContactData) => {
-                submitLead(quiz, d);
-                const r = calculatePathC(quiz);
-                trackCompleteRegistration({ path: "refinance", currency: "AUD", value: r.annualSavings });
-                advance("C_results", asQuiz(d));
-              }}
-              onBack={back}
-            />
-          </Slide>
-        )}
-
-        {screen === "C_results" && (
-          <Slide id="C_results" direction={direction}>
-            <ScreenC7ResultsC quiz={quiz} />
           </Slide>
         )}
 

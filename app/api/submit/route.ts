@@ -1,5 +1,5 @@
 import type { QuizData } from "@/lib/types";
-import { calculatePathA, calculatePathN, calculatePathC } from "@/lib/calculations";
+import { calculatePathA, calculatePathN } from "@/lib/calculations";
 import { calculateGrants } from "@/lib/grants";
 
 export async function POST(request: Request) {
@@ -90,23 +90,6 @@ async function buildAndSend(quiz: QuizData, webhookUrl: string) {
       borrowiq_equity:              r.usableEquity,
       borrowiq_additional_borrowing: r.additionalBorrowing,
       borrowiq_next_property_budget: r.maxBudget,
-    };
-
-  } else if (pathId === "review-loan") {
-    const r = calculatePathC(quiz);
-
-    pathFields = {
-      path:                        "refinance",
-      tags:                        ["BORROWIQ-LEAD", "REFINANCE", "QUALIFIED", state].join(","),
-      borrowiq_qualified:          "yes",
-      borrowiq_current_rate:       quiz.currentRate          ?? 0.065,
-      borrowiq_total_loan:         quiz.currentLoanBalance   ?? 0,
-      borrowiq_loan_type:          quiz.currentLoanType      ?? "",
-      borrowiq_has_offset:         quiz.hasOffset ? "yes" : "no",
-      borrowiq_offset_balance:     quiz.offsetBalance         ?? 0,
-      borrowiq_deposit:            quiz.otherSavings           ?? 0,
-      borrowiq_portfolio_worth:    quiz.propertyValue          ?? 0,
-      borrowiq_annual_savings:     r.annualSavings,
     };
 
   } else {

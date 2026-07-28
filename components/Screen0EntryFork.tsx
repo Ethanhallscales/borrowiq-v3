@@ -34,17 +34,6 @@ const PATHS = [
       </svg>
     ),
   },
-  {
-    id: "review-loan",
-    title: "I want to review my current loan",
-    sub: "Find out if you're overpaying & how to save",
-    icon: (
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden>
-        <circle cx="14" cy="14" r="9" stroke="#00C2FF" strokeWidth="1.6" fill="none" />
-        <path d="M10 14.5l3 3 5-6" stroke="#7FFFFF" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-  },
 ] as const;
 
 type PathId = (typeof PATHS)[number]["id"];
