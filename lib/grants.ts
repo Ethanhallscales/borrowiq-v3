@@ -55,6 +55,15 @@ export const FHG_MIN_DEPOSIT   = 0.05;   // 5%
 export const FAM_HG_MIN_DEPOSIT  = 0.02;   // 2%
 // Price caps same as FHG
 
+// ─── Help to Buy (federal shared equity scheme) ──────────────────────────────
+// Government contributes up to 30% of the purchase price (established homes)
+// and buyer needs just a 2% deposit. Income-tested.
+
+export const HELP_TO_BUY_MIN_DEPOSIT       = 0.02;      // 2%
+export const HELP_TO_BUY_GOV_PCT           = 0.30;      // up to 30%
+export const HELP_TO_BUY_INCOME_CAP_SINGLE = 106_000;
+export const HELP_TO_BUY_INCOME_CAP_JOINT  = 160_000;   // couples & single parents
+
 // ─── FHSS ────────────────────────────────────────────────────────────────────
 export const FHSS_MAX = 50_000;
 
