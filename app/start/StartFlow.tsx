@@ -132,9 +132,9 @@ export default function StartFlow() {
         key={Math.round(heroPreview)}
         initial={{ opacity: 0.6, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mt-4 text-center text-[14px] text-ocean-highlight/70"
+        className="mt-4 text-center text-[14px] text-[#4E6C8B]"
       >
-        Looking like <span className="font-display text-[20px] tracking-wide text-white">{money(heroPreview)}</span> so far
+        Looking like <span className="font-display text-[20px] tracking-wide text-[#0B2C4A]">{money(heroPreview)}</span> so far
       </motion.p>
     ) : null;
 
@@ -270,7 +270,7 @@ export default function StartFlow() {
                   onChange={(e) => setFirstName(e.target.value)}
                   placeholder="First name"
                   autoComplete="given-name"
-                  className="h-16 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-5 text-[17px] text-white placeholder:text-ocean-highlight/35 outline-none focus:border-ocean-accent"
+                  className="h-16 w-full rounded-2xl border border-[#D6E6F5] bg-white px-5 text-[17px] text-[#0B2C4A] outline-none placeholder:text-[#9DB2C6] focus:border-[#0076BE]"
                 />
                 <input
                   value={email}
@@ -279,7 +279,7 @@ export default function StartFlow() {
                   type="email"
                   inputMode="email"
                   autoComplete="email"
-                  className="h-16 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-5 text-[17px] text-white placeholder:text-ocean-highlight/35 outline-none focus:border-ocean-accent"
+                  className="h-16 w-full rounded-2xl border border-[#D6E6F5] bg-white px-5 text-[17px] text-[#0B2C4A] outline-none placeholder:text-[#9DB2C6] focus:border-[#0076BE]"
                 />
                 <input
                   value={phone}
@@ -288,7 +288,7 @@ export default function StartFlow() {
                   type="tel"
                   inputMode="tel"
                   autoComplete="tel"
-                  className="h-16 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-5 text-[17px] text-white placeholder:text-ocean-highlight/35 outline-none focus:border-ocean-accent"
+                  className="h-16 w-full rounded-2xl border border-[#D6E6F5] bg-white px-5 text-[17px] text-[#0B2C4A] outline-none placeholder:text-[#9DB2C6] focus:border-[#0076BE]"
                 />
               </div>
             </StepShell>
