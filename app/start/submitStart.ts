@@ -1,16 +1,25 @@
 /* ============================================================
    /start SUBMIT HANDLER
-   Deliberately isolated from the form and the calc engine: it takes
-   the raw answers + the calc result, flattens everything into ONE
-   snake_case JSON object, and (for now) logs it.
 
-   TO CONNECT A WEBHOOK LATER: the only edit needed is inside
-   submitStart() — post `payload` to the endpoint. Nothing in the
-   form, the steps or lib/start/startCalc.ts has to change.
+   Builds the GoHighLevel payload and posts it to the /start submit
+   route, which forwards to the SAME GHL_WEBHOOK_URL endpoint the live
+   BorrowIQ calculator uses (app/api/submit/route.ts).
+
+   FIELD CONTRACT: every key the live calculator sends is reproduced
+   here unchanged, with the same name, meaning and format. Everything
+   /start collects or calculates on top of that is added as a NEW key.
+   Nothing existing is renamed or dropped.
+
+   PATH NOTE: when /start is promoted to the site root (and the current
+   funnel moves to /v1), this endpoint constant is the only line that
+   needs to change — the outbound GHL URL is an env var and is not
+   affected, and GHL should route on `source`, never on the path.
    ============================================================ */
 
-import type { CalcResult, Mode } from "@/lib/start/startCalc";
+import type { CalcResult, Mode, QualifiedReason } from "@/lib/start/startCalc";
 import { STATE_NAMES } from "@/lib/start/locationCaps";
+
+export const START_SUBMIT_ENDPOINT = "/start/api/submit";
 
 export type StartAnswers = {
   applicant_type: "single" | "joint";
@@ -33,115 +42,145 @@ export type StartAnswers = {
   phone: string;
   mode_at_submit: Mode;
   started_at: number | null;
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  utm_content: string;
 };
 
-export type StartPayload = Record<string, string | number | boolean | null>;
+export type StartPayload = Record<string, string | number>;
 
 const r = (n: number | undefined | null) => Math.round(n || 0);
 const pct = (n: number | undefined | null) => Math.round((n || 0) * 1000) / 10;
 
-/** Flattens every input and every calculated output into one flat object. */
 export function buildStartPayload(a: StartAnswers, calc: CalcResult): StartPayload {
   const htb = calc.htb;
   const fhg = calc.fhg;
+  const qualified: boolean = calc.qualified;
+  const reason: QualifiedReason = calc.qualifiedReason;
+  const scheme = a.mode_at_submit === "htb" ? htb : fhg;
 
-  return {
-    /* ── meta ─────────────────────────────────────────────── */
-    source: "borrowiq-start-calc",
-    submitted_at: new Date().toISOString(),
-    time_to_complete_seconds: a.started_at ? Math.round((Date.now() - a.started_at) / 1000) : 0,
-    mode_at_submit: a.mode_at_submit,
-
-    /* ── contact ──────────────────────────────────────────── */
-    first_name: a.first_name.trim(),
+  const payload: StartPayload = {
+    /* ══ EXISTING FIELDS — identical keys, meaning and format to the
+          live calculator's payload in app/api/submit/route.ts ══════ */
+    firstName: a.first_name.trim(),
+    lastName: "", // /start asks for a first name only
     email: a.email.trim(),
     phone: a.phone.trim(),
+    source: "borrowiq-start",
+    timestamp: new Date().toISOString(),
+    path: "first_home_buyer",
+    tags: ["BORROWIQ-LEAD", "FHB", qualified ? "QUALIFIED" : "NURTURE", a.state].join(","),
 
-    /* ── inputs: household ────────────────────────────────── */
-    applicant_type: a.applicant_type,
-    dependants: a.dependants,
-    first_home_buyer: a.first_home_buyer,
-    home_type: a.home_type,
+    borrowiq_qualified: qualified ? "yes" : "no",
+    borrowiq_income: r(a.income_1),
+    borrowiq_partner_income: a.applicant_type === "joint" ? r(a.income_2) : 0,
+    borrowiq_credit_card_limit: r(a.credit_card_limits),
+    // /start collects one combined car + personal figure. It goes in the car
+    // field so the existing key keeps a real value, and the personal field
+    // stays 0 rather than double-counting.
+    borrowiq_car_loan_monthly: r(a.other_loan_repayments_monthly),
+    borrowiq_personal_loan_monthly: 0,
+    borrowiq_hecs_debt: r(a.hecs_balance),
+    borrowiq_dependants: r(a.dependants),
+    borrowiq_deposit: r(a.deposit),
+    borrowiq_state: a.state,
+    borrowiq_buying_situation: a.applicant_type === "joint" ? "partner" : "solo",
+    borrowiq_property_type: a.home_type ?? "",
+    borrowiq_borrowing_capacity: r(calc.borrowingCapacity),
+    borrowiq_max_property: r(calc.buyingAloneMax),
+    borrowiq_monthly_repayment: r(scheme?.monthlyRepayment),
+    borrowiq_lvr:
+      scheme && scheme.maxPrice > 0 ? Math.round((scheme.loan / scheme.maxPrice) * 1000) / 10 : 0,
+    borrowiq_grants_eligible: [
+      (htb?.grant ?? 0) > 0 ? "FHOG" : null,
+      (htb?.dutySaved ?? 0) > 0 ? "STAMP-DUTY" : null,
+      (htb?.govShare ?? 0) > 0 ? "HELP-TO-BUY" : null,
+      (fhg?.maxPrice ?? 0) > 0 ? "FHG" : null,
+    ]
+      .filter(Boolean)
+      .join(",") || "none",
+    borrowiq_utm_source: a.utm_source,
+    borrowiq_utm_medium: a.utm_medium,
+    borrowiq_utm_campaign: a.utm_campaign,
+    borrowiq_utm_content: a.utm_content,
 
-    /* ── inputs: money ────────────────────────────────────── */
-    income_1: r(a.income_1),
-    income_2: a.applicant_type === "joint" ? r(a.income_2) : 0,
-    combined_income: r(calc.combinedIncome),
-    deposit: r(a.deposit),
+    /* ══ NEW FIELDS — create matching custom fields in GHL ═══════════ */
 
-    /* ── inputs: debts ────────────────────────────────────── */
-    credit_card_limits: r(a.credit_card_limits),
-    has_credit_cards: (a.credit_card_limits || 0) > 0,
-    hecs_balance: r(a.hecs_balance),
-    has_hecs: (a.hecs_balance || 0) > 0,
-    other_loan_repayments_monthly: r(a.other_loan_repayments_monthly),
-    has_other_loans: (a.other_loan_repayments_monthly || 0) > 0,
+    /* qualification detail */
+    borrowiq_qualified_reason: reason,
 
-    /* ── inputs: location ─────────────────────────────────── */
-    suburb: a.suburb,
-    postcode: a.postcode,
-    state: a.state,
-    state_name: STATE_NAMES[a.state] ?? null,
-    region: a.region,
-    location_intent: a.location_intent,
+    /* location */
+    borrowiq_postcode: a.postcode ?? "",
+    borrowiq_suburb: a.suburb ?? "",
+    borrowiq_state_name: STATE_NAMES[a.state] ?? "",
+    borrowiq_region: a.region,
+    borrowiq_location_intent: a.location_intent,
 
-    /* ── outputs: serviceability ──────────────────────────── */
-    combined_monthly_net_income: r(calc.combinedMonthlyNet),
-    living_expenses_monthly: r(calc.livingExpenses),
-    credit_card_commitment_monthly: r(calc.creditCardMonthly),
-    hecs_repayment_monthly: r(calc.hecsMonthly),
-    other_loans_commitment_monthly: r(calc.otherLoansMonthly),
-    total_commitments_monthly: r(calc.totalCommitments),
-    monthly_surplus: r(calc.monthlySurplus),
-    borrowing_capacity: r(calc.borrowingCapacity),
-    buying_alone_max_price: r(calc.buyingAloneMax),
+    /* debts detail */
+    borrowiq_other_loan_repayments_monthly: r(a.other_loan_repayments_monthly),
+    borrowiq_has_credit_cards: (a.credit_card_limits || 0) > 0 ? "yes" : "no",
+    borrowiq_has_hecs: (a.hecs_balance || 0) > 0 ? "yes" : "no",
+    borrowiq_has_other_loans: (a.other_loan_repayments_monthly || 0) > 0 ? "yes" : "no",
 
-    /* ── outputs: Help to Buy (2% + government share) ─────── */
-    htb_max_purchase_price: r(htb?.maxPrice),
-    htb_deposit_required: r(htb?.depositRequired),
-    htb_gov_contribution: r(htb?.govShare),
-    htb_gov_contribution_pct: pct(htb?.govPct),
-    htb_loan_amount: r(htb?.loan),
-    htb_monthly_repayment: r(htb?.monthlyRepayment),
-    htb_price_cap: r(htb?.priceCap),
-    htb_capped_by_area: !!htb?.cappedByArea,
-    htb_stamp_duty_saved: r(htb?.dutySaved),
-    htb_first_home_owner_grant: r(htb?.grant),
-    htb_total_support: r(htb?.totalSupport),
+    /* serviceability detail */
+    borrowiq_combined_income: r(calc.combinedIncome),
+    borrowiq_combined_monthly_net_income: r(calc.combinedMonthlyNet),
+    borrowiq_living_expenses_monthly: r(calc.livingExpenses),
+    borrowiq_total_commitments_monthly: r(calc.totalCommitments),
+    borrowiq_monthly_surplus: r(calc.monthlySurplus),
 
-    /* ── outputs: 5% Deposit Scheme (First Home Guarantee) ── */
-    fhg_max_purchase_price: r(fhg?.maxPrice),
-    fhg_deposit_required: r(fhg?.depositRequired),
-    fhg_loan_amount: r(fhg?.loan),
-    fhg_monthly_repayment: r(fhg?.monthlyRepayment),
-    fhg_price_cap: r(fhg?.priceCap),
-    fhg_capped_by_area: !!fhg?.cappedByArea,
-    fhg_stamp_duty_saved: r(fhg?.dutySaved),
-    fhg_first_home_owner_grant: r(fhg?.grant),
-    fhg_total_support: r(fhg?.totalSupport),
+    /* Help to Buy — Government Shared Equity */
+    borrowiq_htb_max_price: r(htb?.maxPrice),
+    borrowiq_htb_deposit_used: r(htb?.depositRequired),
+    borrowiq_htb_min_deposit: r(htb?.minDeposit),
+    borrowiq_htb_gov_contribution: r(htb?.govShare),
+    borrowiq_htb_gov_pct: pct(htb?.govPct),
+    borrowiq_htb_loan_amount: r(htb?.loan),
+    borrowiq_htb_monthly_repayment: r(htb?.monthlyRepayment),
+    borrowiq_htb_price_cap: r(htb?.priceCap),
+    borrowiq_htb_capped_by_area: htb?.cappedByArea ? "yes" : "no",
+    borrowiq_htb_stamp_duty_saved: r(htb?.dutySaved),
+    borrowiq_htb_first_home_owner_grant: r(htb?.grant),
 
-    /* ── soft flags (never used to block anyone) ──────────── */
-    help_to_buy_income_cap: r(calc.incomeCap),
-    help_to_buy_income_cap_exceeded: calc.incomeOverCap,
-    needs_manual_confirmation: calc.incomeOverCap,
+    /* First Home Guarantee */
+    borrowiq_fhg_max_price: r(fhg?.maxPrice),
+    borrowiq_fhg_deposit_used: r(fhg?.depositRequired),
+    borrowiq_fhg_min_deposit: r(fhg?.minDeposit),
+    borrowiq_fhg_loan_amount: r(fhg?.loan),
+    borrowiq_fhg_monthly_repayment: r(fhg?.monthlyRepayment),
+    borrowiq_fhg_price_cap: r(fhg?.priceCap),
+    borrowiq_fhg_capped_by_area: fhg?.cappedByArea ? "yes" : "no",
+    borrowiq_fhg_stamp_duty_saved: r(fhg?.dutySaved),
+    borrowiq_fhg_first_home_owner_grant: r(fhg?.grant),
+
+    /* scheme / session meta */
+    borrowiq_mode_at_submit: a.mode_at_submit,
+    borrowiq_home_type: a.home_type ?? "",
+    borrowiq_first_home_buyer: a.first_home_buyer ? "yes" : "no",
+    borrowiq_applicant_type: a.applicant_type,
+    borrowiq_income_cap: r(calc.incomeCap),
+    borrowiq_income_cap_exceeded: calc.incomeOverCap ? "yes" : "no",
+    borrowiq_time_to_complete_seconds: a.started_at
+      ? Math.round((Date.now() - a.started_at) / 1000)
+      : 0,
   };
+
+  return payload;
 }
 
 /**
- * Single exit point for the lead. Currently console-only — no webhook, no CRM.
- * Drop the fetch in here when the endpoint exists; the signature stays the same.
+ * Single exit point for the lead. Failure is non-blocking by design — the
+ * user still sees their results even if the CRM is unreachable.
  */
 export async function submitStart(payload: StartPayload): Promise<void> {
-  // eslint-disable-next-line no-console
-  console.log("[/start] lead payload", payload);
-  // eslint-disable-next-line no-console
-  console.log("[/start] lead payload (JSON)", JSON.stringify(payload, null, 2));
-
-  // --- WEBHOOK DROP-IN POINT -------------------------------------------
-  // await fetch(process.env.NEXT_PUBLIC_START_WEBHOOK_URL!, {
-  //   method: "POST",
-  //   headers: { "Content-Type": "application/json" },
-  //   body: JSON.stringify(payload),
-  // });
-  // ---------------------------------------------------------------------
+  try {
+    await fetch(START_SUBMIT_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    /* swallowed — never block the results screen on a webhook */
+  }
 }

@@ -7,8 +7,13 @@
    balance, car/personal loan repayments) and there is NO
    eligibility gating — every input still returns full numbers.
 
-   Pure functions only, no React — so the UI can stay dumb and a
-   webhook can be added later without touching the maths.
+   Pure functions only, no React — so the UI can stay dumb and the
+   webhook route can build its payload without touching the maths.
+
+   DEPOSIT MODEL: max purchase price always uses the buyer's FULL
+   deposit, never the scheme minimum. The scheme minimum (2% HTB /
+   5% FHG) is reported separately as `minDeposit` so the results
+   screen can show "you could get in with as little as $X".
    ============================================================ */
 
 import {
@@ -26,6 +31,8 @@ import {
   BORROWING_CONSERVATISM_FACTOR,
 } from "./borrowingPowerConfig";
 import { capFor, type CapRegion } from "./locationCaps";
+import { calculateStampDuty } from "@/lib/stamp-duty";
+import type { AustralianState } from "@/lib/types";
 
 export const LOAN_TERM_YEARS = 30;
 export const INCOME_CAP_SINGLE = 103000;
@@ -36,6 +43,28 @@ export const QLD_FHOG = 30000;
 export const QLD_FHOG_CAP = 750000;
 export const FHG_DEPOSIT_PCT = 0.05;
 export const FHG_LOAN_PCT = 0.95;
+
+/* ── Qualification thresholds ─────────────────────────────────────────────
+   The first two mirror the live BorrowIQ calculator exactly (see
+   calculatePathA in lib/calculations.ts): borrowing capacity has to reach
+   a $500k purchase with a 5% deposit, and the deposit has to survive the
+   5% + stamp duty + $2,800 of conveyancing/inspection costs at that price.
+   The third is the /start-specific rule: Help to Buy has to actually get
+   them to $500k. All three must pass.                                    */
+export const QUALIFY_PRICE = 500000;
+export const QUALIFY_DEPOSIT_PCT = 0.05;
+export const QUALIFY_OTHER_COSTS = 2800; // conveyancing + building inspection
+
+// See RULE 1 in runCalc — the live calculator's raw $475k capacity threshold
+// is calibrated to a different engine. false = keep the rule's intent.
+export const QUALIFY_LITERAL_CAPACITY_RULE = false;
+
+// The stamp duty tables only cover the eight states/territories. /start can
+// resolve to JBT/CKI via postcode, which have no table of their own — fall
+// back to QLD so the qualification check still runs rather than throwing.
+const DUTY_STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
+const dutyStateFor = (capKey: string): AustralianState =>
+  (DUTY_STATES.includes(capKey) ? capKey : "QLD") as AustralianState;
 
 export type Mode = "htb" | "fhg";
 export type ApplicantType = "single" | "joint";
@@ -144,8 +173,9 @@ export type CalcInputs = {
 
 export type SchemeResult = {
   maxPrice: number;
-  deposit: number;
-  depositRequired: number;
+  deposit: number;          // the buyer's full deposit, as entered
+  depositRequired: number;  // what they'd actually put in at maxPrice
+  minDeposit: number;       // scheme minimum at maxPrice — the "as little as $X" figure
   govShare: number;
   govPct: number;
   loan: number;
@@ -175,7 +205,21 @@ export type CalcResult = {
   incomeCap: number;
   incomeOverCap: boolean;
   buyingAloneMax: number;   // what they'd reach with no scheme help
+  /* qualification — decides which CTA the results screen shows.
+     Never surfaced to the user as a "you don't qualify" message. */
+  qualified: boolean;
+  qualifiedReason: QualifiedReason;
+  qualifyDepositShortfall: number; // $ short of the deposit + costs test, 0 if passing
 };
+
+/* "" when qualified. Otherwise the FIRST rule that failed, in the order the
+   live calculator applies them, so the results screen knows which single
+   "how to get there" tip to lead with. */
+export type QualifiedReason =
+  | ""
+  | "capacity_below_500k"
+  | "deposit_short_of_costs"
+  | "htb_max_below_500k";
 
 /* ── The engine ──────────────────────────────────────────────────────────── */
 
@@ -213,22 +257,32 @@ export function runCalc(i: CalcInputs): CalcResult {
 
   let htb: SchemeResult | null = null;
   if (htbCap && deposit > 0 && combinedIncome > 0) {
-    const rawMax = borrowingCapacity / (1 - MIN_DEPOSIT_PCT - maxGovPct);
+    /* price = deposit + government share + loan, subject to three ceilings:
+         1. serviceability — loan can't exceed capacity, so
+            price(1 - govPct) <= capacity + FULL deposit
+         2. scheme minimum  — the buyer must still contribute at least 2%
+         3. the area price cap                                            */
+    const capacityMax = (borrowingCapacity + deposit) / (1 - maxGovPct);
     const depositConstrainedMax = deposit / MIN_DEPOSIT_PCT;
-    const maxPrice = Math.min(rawMax, depositConstrainedMax, htbCap);
+    const maxPrice = Math.min(capacityMax, depositConstrainedMax, htbCap);
+
     const govShare = Math.min(maxGovPct * maxPrice, Math.max(maxPrice - deposit, 0));
-    const loan = Math.max(maxPrice - deposit - govShare, 0);
+    const loan = Math.min(borrowingCapacity, Math.max(maxPrice - deposit - govShare, 0));
+    // What they actually have to put in at this price — never more than their
+    // full deposit, and less than it when the area cap is what's binding.
+    const depositRequired = Math.max(maxPrice - govShare - loan, 0);
     const dutySaved = isQld ? qldDutySaved(maxPrice, i.firstHome, isNew) : 0;
     const grant = isQld && i.firstHome && isNew && maxPrice <= QLD_FHOG_CAP ? QLD_FHOG : 0;
     htb = {
       maxPrice,
       deposit,
-      depositRequired: deposit,
+      depositRequired,
+      minDeposit: maxPrice * MIN_DEPOSIT_PCT,
       govShare,
       govPct: maxPrice > 0 ? govShare / maxPrice : 0,
       loan,
       monthlyRepayment: monthlyRepayment(loan),
-      cappedByArea: rawMax > htbCap,
+      cappedByArea: Math.min(capacityMax, depositConstrainedMax) > htbCap,
       priceCap: htbCap,
       dutySaved,
       grant,
@@ -238,17 +292,21 @@ export function runCalc(i: CalcInputs): CalcResult {
 
   let fhg: SchemeResult | null = null;
   if (fhgCap && deposit > 0 && combinedIncome > 0) {
-    const maxByCapacity = borrowingCapacity / FHG_LOAN_PCT;
+    /* Same shape, no government share: the loan is capped at 95% of price
+       AND at borrowing capacity, and the buyer brings the rest.
+       price <= capacity + FULL deposit, and price <= deposit / 5%.       */
+    const maxByCapacity = borrowingCapacity + deposit;
     const maxByDeposit = deposit / FHG_DEPOSIT_PCT;
     const maxPrice = Math.min(maxByCapacity, maxByDeposit, fhgCap);
-    const depositRequired = maxPrice * FHG_DEPOSIT_PCT;
-    const loan = Math.max(maxPrice - depositRequired, 0);
+    const loan = Math.min(borrowingCapacity, maxPrice * FHG_LOAN_PCT);
+    const depositRequired = Math.max(maxPrice - loan, 0);
     const dutySaved = isQld ? qldDutySaved(maxPrice, i.firstHome, isNew) : 0;
     const grant = isQld && i.firstHome && isNew && maxPrice <= QLD_FHOG_CAP ? QLD_FHOG : 0;
     fhg = {
       maxPrice,
       deposit,
       depositRequired,
+      minDeposit: maxPrice * FHG_DEPOSIT_PCT,
       govShare: 0,
       govPct: 0,
       loan,
@@ -260,6 +318,44 @@ export function runCalc(i: CalcInputs): CalcResult {
       totalSupport: dutySaved + grant,
     };
   }
+
+  /* ── Qualification ─────────────────────────────────────────────────────
+     Rules 1 and 2 are lifted verbatim from calculatePathA in
+     lib/calculations.ts so /start and the live calculator agree on who is
+     a "QUALIFIED" lead. Rule 3 is the /start addition.                   */
+  const minDep500 = QUALIFY_PRICE * QUALIFY_DEPOSIT_PCT;
+  const { payable: dutyAt500 } = calculateStampDuty(
+    dutyStateFor(i.capKey),
+    QUALIFY_PRICE,
+    i.firstHome,
+    isNew,
+  );
+  const cashAfterCosts500 = deposit - minDep500 - dutyAt500 - QUALIFY_OTHER_COSTS;
+
+  /* RULE 1 — "can they afford a $500k property?"
+     The live calculator writes this as `capacity >= $475,000`, but that
+     threshold was calibrated against ITS capacity number, which is computed
+     on a different basis (HEM $4,000/mo vs $5,300, an 8.50% APRA floor vs
+     8.90% assessed, and no 0.95 conservatism factor). On the same inputs the
+     live engine returns ~$606k where /start returns ~$468k — so reusing the
+     literal $475k here would tag almost every /start lead as NURTURE.
+     We keep the rule's intent instead: their capacity plus their FULL deposit
+     has to reach a $500k purchase. Flip QUALIFY_LITERAL_CAPACITY_RULE to true
+     to use the live calculator's raw threshold instead. */
+  const capacityOk = QUALIFY_LITERAL_CAPACITY_RULE
+    ? borrowingCapacity >= QUALIFY_PRICE - minDep500
+    : borrowingCapacity + deposit >= QUALIFY_PRICE;
+  const depositOk = cashAfterCosts500 >= 0;
+  const htbReachesFloor = (htb?.maxPrice ?? 0) >= QUALIFY_PRICE;
+
+  const qualified = capacityOk && depositOk && htbReachesFloor;
+  const qualifiedReason: QualifiedReason = qualified
+    ? ""
+    : !capacityOk
+      ? "capacity_below_500k"
+      : !depositOk
+        ? "deposit_short_of_costs"
+        : "htb_max_below_500k";
 
   return {
     combinedIncome,
@@ -276,5 +372,8 @@ export function runCalc(i: CalcInputs): CalcResult {
     incomeCap,
     incomeOverCap,
     buyingAloneMax: deposit + borrowingCapacity,
+    qualified,
+    qualifiedReason,
+    qualifyDepositShortfall: Math.max(-cashAfterCosts500, 0),
   };
 }

@@ -178,58 +178,87 @@ export function Chip({
   );
 }
 
-/* ── slider ──────────────────────────────────────────────────────────────── */
+/* ── money input ─────────────────────────────────────────────────────────
+   Replaces the old sliders. Typed entry with live thousands separators, a
+   $ prefix and a numeric keypad on mobile. Validation is advisory only — a
+   soft hint shows under the field but never blocks the Next button, because
+   a wrong-looking number is still a lead worth capturing.               */
 
-export function BigSlider({
+const digitsOnly = (s: string) => s.replace(/[^\d]/g, "");
+const groupThousands = (s: string) => s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+export function MoneyInput({
   value,
   onChange,
-  min,
-  max,
-  step,
   label,
+  placeholder,
   hint,
-  format = money,
+  max,
+  maxMessage,
+  suffix,
+  autoFocus,
 }: {
   value: number;
   onChange: (v: number) => void;
-  min: number;
-  max: number;
-  step: number;
-  label?: string;
+  label: string;
+  placeholder?: string;
   hint?: string;
-  format?: (v: number) => string;
+  /** Advisory ceiling — shows a hint above it, never clamps or blocks. */
+  max?: number;
+  maxMessage?: string;
+  /** e.g. "per month" — rendered inside the field, right-aligned. */
+  suffix?: string;
+  autoFocus?: boolean;
 }) {
-  const pct = ((value - min) / (max - min)) * 100;
+  // Held as a string so a half-typed "1,2" doesn't get normalised out from
+  // under the cursor, and so the field can be genuinely empty rather than "0".
+  const [text, setText] = useState(value ? groupThousands(String(value)) : "");
+
+  // Re-sync only when the parent changes the value to something we didn't type.
+  useEffect(() => {
+    const current = Number(digitsOnly(text) || 0);
+    if (current !== value) setText(value ? groupThousands(String(value)) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const handle = (raw: string) => {
+    const d = digitsOnly(raw).slice(0, 9);
+    setText(groupThousands(d));
+    onChange(Number(d || 0));
+  };
+
+  const overMax = max !== undefined && value > max;
+
   return (
     <div className={`${CARD} p-5`}>
-      {label && <p className="text-[13px] uppercase tracking-[0.14em] text-[#7C93A9]">{label}</p>}
-      <motion.p
-        key={Math.round(value)}
-        initial={{ scale: 0.97, opacity: 0.75 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.18 }}
-        className="font-display mt-1 text-[40px] leading-none tracking-wide text-[#0B2C4A]"
-      >
-        {format(value)}
-      </motion.p>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        aria-label={label ?? "amount"}
-        className="start-range mt-5 h-2 w-full cursor-pointer appearance-none rounded-full"
-        style={{
-          background: `linear-gradient(90deg, #0076BE 0%, #00A3E0 ${pct}%, #DCEBF8 ${pct}%, #DCEBF8 100%)`,
-        }}
-      />
-      <div className="mt-2 flex justify-between text-[12px] text-[#93A9BD]">
-        <span>{format(min)}</span>
-        <span>{format(max)}+</span>
+      <label className="block text-[13px] uppercase tracking-[0.14em] text-[#7C93A9]">{label}</label>
+      <div className="relative mt-2">
+        <span className="font-display pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 text-[34px] leading-none text-[#7C93A9]">
+          $
+        </span>
+        <input
+          value={text}
+          onChange={(e) => handle(e.target.value)}
+          inputMode="numeric"
+          autoComplete="off"
+          autoFocus={autoFocus}
+          placeholder={placeholder}
+          aria-label={label}
+          className={[
+            "font-display h-14 w-full border-b bg-transparent pl-7 text-[34px] leading-none tracking-wide",
+            "text-[#0B2C4A] outline-none transition placeholder:text-[#C2D4E4]",
+            suffix ? "pr-24" : "",
+            overMax ? "border-[#E0A23C]" : "border-[#D6E6F5] focus:border-[#0076BE]",
+          ].join(" ")}
+        />
+        {suffix && (
+          <span className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-[14px] text-[#7C93A9]">
+            {suffix}
+          </span>
+        )}
       </div>
-      {hint && <p className="mt-3 text-[13px] leading-snug text-[#6B87A3]">{hint}</p>}
+      {overMax && maxMessage && <p className="mt-3 text-[13px] leading-snug text-[#B07419]">{maxMessage}</p>}
+      {hint && !overMax && <p className="mt-3 text-[13px] leading-snug text-[#6B87A3]">{hint}</p>}
     </div>
   );
 }
@@ -279,11 +308,11 @@ export function LocationPicker({
           }}
           className="mt-4 text-[14px] font-semibold text-[#0076BE] underline underline-offset-4"
         >
-          Actually, I know the suburb
+          I know the suburb
         </button>
         {unsureState && (
           <p className="mt-3 text-[13px] text-[#6B87A3]">
-            We&apos;ll use {STATE_CAPITAL_CITY[unsureState]} area limits for now — easy to change on the call.
+            We&apos;ll use {STATE_CAPITAL_CITY[unsureState]} area limits for now. We can adjust this on the call.
           </p>
         )}
       </div>
@@ -373,7 +402,7 @@ export function BookBar({ position }: { position: "top" | "bottom" }) {
     <div className={`${base} bg-white/85 px-4 py-3 backdrop-blur-md`}>
       <div className="mx-auto flex max-w-md items-center gap-3">
         <p className="min-w-0 flex-1 text-[13px] leading-tight text-[#4E6C8B]">
-          {position === "top" ? "Want your exact number?" : "15 minutes. No obligation."}
+          {position === "top" ? "Want your exact numbers?" : "15 minutes, with no obligation."}
         </p>
         <a
           href={BOOKING_URL}
@@ -412,8 +441,8 @@ export function BookingPopup({ show, onClose }: { show: boolean; onClose: () => 
               Claim your free strategy session
             </h2>
             <p className="mt-3 text-[15px] leading-snug text-[#4E6C8B]">
-              A 15-minute call to know your exact position — what you can actually borrow, which grants you can claim,
-              and what to do first.
+              A 15-minute call to confirm your exact position: what you can borrow, which grants you can claim, and
+              what to do first.
             </p>
             <a
               href={BOOKING_URL}
@@ -422,7 +451,7 @@ export function BookingPopup({ show, onClose }: { show: boolean; onClose: () => 
               onClick={onClose}
               className={`mt-5 flex h-14 items-center justify-center rounded-2xl text-[17px] font-bold transition active:scale-[0.98] ${CTA}`}
             >
-              Grab my free session →
+              Book my free session →
             </a>
             <button onClick={onClose} className="mt-3 w-full py-2 text-[14px] text-[#7C93A9]">
               Not right now
