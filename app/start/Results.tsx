@@ -72,8 +72,8 @@ function HowToGetThere({
       title: "Build the deposit a little further",
       body:
         depositShortfall > 0
-          ? `You're around ${money(depositShortfall)} short of covering a 5% deposit plus stamp duty and the usual conveyancing and inspection costs. That gap is often closer than it looks once grants are counted.`
-          : "A slightly larger deposit lifts your purchase price and covers stamp duty and the usual conveyancing and inspection costs more comfortably.",
+          ? `You're around ${money(depositShortfall)} short of the deposit Help to Buy needs to put a $500,000 purchase in reach. That gap is often closer than it looks once grants and stamp duty concessions are counted.`
+          : "A slightly larger deposit lifts your purchase price, and covers stamp duty and the usual conveyancing and inspection costs more comfortably.",
     },
     {
       key: "capacity_below_500k" as const,

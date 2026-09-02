@@ -34,8 +34,6 @@ import {
   OTHER_GOV_SUPPORT_SHADING,
 } from "./borrowingPowerConfig";
 import { capFor, type CapRegion } from "./locationCaps";
-import { calculateStampDuty } from "@/lib/stamp-duty";
-import type { AustralianState } from "@/lib/types";
 
 export const LOAN_TERM_YEARS = 30;
 export const INCOME_CAP_SINGLE = 103000;
@@ -47,27 +45,10 @@ export const QLD_FHOG_CAP = 750000;
 export const FHG_DEPOSIT_PCT = 0.05;
 export const FHG_LOAN_PCT = 0.95;
 
-/* ── Qualification thresholds ─────────────────────────────────────────────
-   The first two mirror the live BorrowIQ calculator exactly (see
-   calculatePathA in lib/calculations.ts): borrowing capacity has to reach
-   a $500k purchase with a 5% deposit, and the deposit has to survive the
-   5% + stamp duty + $2,800 of conveyancing/inspection costs at that price.
-   The third is the /start-specific rule: Help to Buy has to actually get
-   them to $500k. All three must pass.                                    */
+/* ── Qualification threshold ──────────────────────────────────────────────
+   A lead is QUALIFIED when Help to Buy gets them to a $500k purchase — see
+   the Qualification block in runCalc for why this is the only test.      */
 export const QUALIFY_PRICE = 500000;
-export const QUALIFY_DEPOSIT_PCT = 0.05;
-export const QUALIFY_OTHER_COSTS = 2800; // conveyancing + building inspection
-
-// See RULE 1 in runCalc — the live calculator's raw $475k capacity threshold
-// is calibrated to a different engine. false = keep the rule's intent.
-export const QUALIFY_LITERAL_CAPACITY_RULE = false;
-
-// The stamp duty tables only cover the eight states/territories. /start can
-// resolve to JBT/CKI via postcode, which have no table of their own — fall
-// back to QLD so the qualification check still runs rather than throwing.
-const DUTY_STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
-const dutyStateFor = (capKey: string): AustralianState =>
-  (DUTY_STATES.includes(capKey) ? capKey : "QLD") as AustralianState;
 
 export type Mode = "htb" | "fhg";
 export type ApplicantType = "single" | "joint";
@@ -222,7 +203,7 @@ export type CalcResult = {
      Never surfaced to the user as a "you don't qualify" message. */
   qualified: boolean;
   qualifiedReason: QualifiedReason;
-  qualifyDepositShortfall: number; // $ short of the deposit + costs test, 0 if passing
+  qualifyDepositShortfall: number; // $ more deposit needed to reach $500k on HTB, 0 if passing
 };
 
 /* "" when qualified. Otherwise the FIRST rule that failed, in the order the
@@ -346,41 +327,33 @@ export function runCalc(i: CalcInputs): CalcResult {
   }
 
   /* ── Qualification ─────────────────────────────────────────────────────
-     Rules 1 and 2 are lifted verbatim from calculatePathA in
-     lib/calculations.ts so /start and the live calculator agree on who is
-     a "QUALIFIED" lead. Rule 3 is the /start addition.                   */
-  const minDep500 = QUALIFY_PRICE * QUALIFY_DEPOSIT_PCT;
-  const { payable: dutyAt500 } = calculateStampDuty(
-    dutyStateFor(i.capKey),
-    QUALIFY_PRICE,
-    i.firstHome,
-    isNew,
-  );
-  const cashAfterCosts500 = deposit - minDep500 - dutyAt500 - QUALIFY_OTHER_COSTS;
+     ONE rule: does Help to Buy actually get them to a $500k purchase?
 
-  /* RULE 1 — "can they afford a $500k property?"
-     The live calculator writes this as `capacity >= $475,000`, but that
-     threshold was calibrated against ITS capacity number, which is computed
-     on a different basis (HEM $4,000/mo vs $5,300, an 8.50% APRA floor vs
-     8.90% assessed, and no 0.95 conservatism factor). On the same inputs the
-     live engine returns ~$606k where /start returns ~$468k — so reusing the
-     literal $475k here would tag almost every /start lead as NURTURE.
-     We keep the rule's intent instead: their capacity plus their FULL deposit
-     has to reach a $500k purchase. Flip QUALIFY_LITERAL_CAPACITY_RULE to true
-     to use the live calculator's raw threshold instead. */
-  const capacityOk = QUALIFY_LITERAL_CAPACITY_RULE
-    ? borrowingCapacity >= QUALIFY_PRICE - minDep500
-    : borrowingCapacity + deposit >= QUALIFY_PRICE;
-  const depositOk = cashAfterCosts500 >= 0;
+     This deliberately no longer mirrors calculatePathA in lib/calculations.ts.
+     That function's two extra gates — capacity + deposit reaching $500k on
+     their own, and a 5% deposit plus stamp duty and costs — both test whether
+     someone can buy at $500k WITHOUT the scheme. Applying them to a Help to
+     Buy funnel tags the scheme's own target customer as NURTURE: the whole
+     point of shared equity is reaching a price you couldn't reach alone.
+
+     htb.maxPrice is already the min of three ceilings (serviceability given
+     the government's share, the 2% scheme minimum deposit, and the area price
+     cap), so this single test still enforces all three — on Help to Buy's
+     terms rather than a standard loan's.                                  */
   const htbReachesFloor = (htb?.maxPrice ?? 0) >= QUALIFY_PRICE;
 
-  const qualified = capacityOk && depositOk && htbReachesFloor;
+  /* Which of the three ceilings kept them under $500k. Not a gate — it only
+     picks which "how to get there" tip the results screen leads with. */
+  const capacityCeiling500 = (borrowingCapacity + deposit) / (1 - maxGovPct);
+  const depositCeiling500 = deposit / MIN_DEPOSIT_PCT;
+
+  const qualified = htbReachesFloor;
   const qualifiedReason: QualifiedReason = qualified
     ? ""
-    : !capacityOk
-      ? "capacity_below_500k"
-      : !depositOk
-        ? "deposit_short_of_costs"
+    : depositCeiling500 < QUALIFY_PRICE
+      ? "deposit_short_of_costs"
+      : capacityCeiling500 < QUALIFY_PRICE
+        ? "capacity_below_500k"
         : "htb_max_below_500k";
 
   return {
@@ -405,6 +378,13 @@ export function runCalc(i: CalcInputs): CalcResult {
     buyingAloneMax: deposit + borrowingCapacity,
     qualified,
     qualifiedReason,
-    qualifyDepositShortfall: Math.max(-cashAfterCosts500, 0),
+    /* Only ever the gap to Help to Buy's 2% minimum — a real, savable number.
+       When serviceability is the binding constraint the shortfall stays 0 and
+       the results screen shows the generic deposit tip instead: quoting
+       someone the six figures of deposit that would out-muscle a capacity
+       ceiling is discouraging, and isn't the path forward for them anyway. */
+    qualifyDepositShortfall: qualified
+      ? 0
+      : Math.max(QUALIFY_PRICE * MIN_DEPOSIT_PCT - deposit, 0),
   };
 }
