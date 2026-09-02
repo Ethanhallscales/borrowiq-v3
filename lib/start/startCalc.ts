@@ -29,6 +29,9 @@ import {
   ADVERTISED_RATE,
   ASSESSED_RATE,
   BORROWING_CONSERVATISM_FACTOR,
+  CHILD_SUPPORT_SHADING,
+  FAMILY_PAYMENTS_SHADING,
+  OTHER_GOV_SUPPORT_SHADING,
 } from "./borrowingPowerConfig";
 import { capFor, type CapRegion } from "./locationCaps";
 import { calculateStampDuty } from "@/lib/stamp-duty";
@@ -165,6 +168,11 @@ export type CalcInputs = {
   firstHome: boolean;
   capKey: string;          // state key for the cap tables, e.g. "QLD"
   region: CapRegion;
+  /* supplementary income — all MONTHLY and all non-taxable, so they are
+     added to net income directly rather than run through the tax tables */
+  childSupportMonthly: number;      // maintenance received, not paid
+  familyPaymentsMonthly: number;    // Family Tax Benefit A & B
+  otherGovSupportMonthly: number;   // DSP, Carer Payment, Age Pension etc.
   /* debts */
   creditCardLimits: number;      // total limits, not balances
   hecsBalance: number;           // outstanding HECS/HELP balance
@@ -189,8 +197,13 @@ export type SchemeResult = {
 
 export type CalcResult = {
   /* serviceability internals — shown as "how we got there" and logged */
-  combinedIncome: number;
-  combinedMonthlyNet: number;
+  combinedIncome: number;            // gross TAXABLE income only
+  combinedMonthlyNet: number;        // salary after tax + supplementary income
+  salaryMonthlyNet: number;          // salary component alone
+  childSupportCounted: number;       // monthly, after shading
+  familyPaymentsCounted: number;     // monthly, after shading
+  otherGovSupportCounted: number;    // monthly, after shading
+  supplementaryMonthly: number;      // the three above, combined
   livingExpenses: number;
   hecsMonthly: number;
   creditCardMonthly: number;
@@ -230,7 +243,20 @@ export function runCalc(i: CalcInputs): CalcResult {
 
   const netMonthly1 = monthlyNetIncome(i.income1 || 0);
   const netMonthly2 = i.applicantType === "joint" ? monthlyNetIncome(i.income2 || 0) : 0;
-  const combinedMonthlyNet = netMonthly1 + netMonthly2;
+  const salaryMonthlyNet = netMonthly1 + netMonthly2;
+
+  /* Supplementary income is tax-free, so it goes straight onto NET income —
+     running it through monthlyNetIncome() would tax money that isn't taxed.
+     For the same reason it is deliberately absent from `combinedIncome`,
+     which drives the HECS repayment and the Help to Buy income cap: both are
+     assessed on taxable income, and counting family payments there would
+     invent a HECS liability and push people over the cap for no reason. */
+  const childSupportCounted = Math.max(i.childSupportMonthly || 0, 0) * CHILD_SUPPORT_SHADING;
+  const familyPaymentsCounted = Math.max(i.familyPaymentsMonthly || 0, 0) * FAMILY_PAYMENTS_SHADING;
+  const otherGovSupportCounted = Math.max(i.otherGovSupportMonthly || 0, 0) * OTHER_GOV_SUPPORT_SHADING;
+  const supplementaryMonthly = childSupportCounted + familyPaymentsCounted + otherGovSupportCounted;
+
+  const combinedMonthlyNet = salaryMonthlyNet + supplementaryMonthly;
 
   const livingExpenses = livingExpensesMonthly(i.applicantType, dependants, combinedIncome, combinedMonthlyNet);
 
@@ -360,6 +386,11 @@ export function runCalc(i: CalcInputs): CalcResult {
   return {
     combinedIncome,
     combinedMonthlyNet,
+    salaryMonthlyNet,
+    childSupportCounted,
+    familyPaymentsCounted,
+    otherGovSupportCounted,
+    supplementaryMonthly,
     livingExpenses,
     hecsMonthly,
     creditCardMonthly,

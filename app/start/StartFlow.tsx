@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { runCalc, type Mode } from "@/lib/start/startCalc";
 import { STATE_NAMES, type LocationRow, type ResolvedLocation, type CapRegion } from "@/lib/start/locationCaps";
 import { buildStartPayload, submitStart } from "./submitStart";
-import { Chip, LocationPicker, MoneyInput, ProgressBar, StepShell, money } from "./parts";
+import { Chip, LocationPicker, MoneyInput, ProgressBar, StepShell, money, toMonthly, type Period } from "./parts";
 import Results from "./Results";
 
 const TOTAL_STEPS = 9;
@@ -21,6 +21,14 @@ export default function StartFlow() {
   const [dependants, setDependants] = useState<number | null>(null);
   const [income1, setIncome1] = useState(0);
   const [income2, setIncome2] = useState(0);
+  /* supplementary income — held in whatever period the user picked, and
+     converted to monthly at the point it reaches the calc engine. */
+  const [childSupport, setChildSupport] = useState(0);
+  const [childSupportPeriod, setChildSupportPeriod] = useState<Period>("fortnight");
+  const [familyPayments, setFamilyPayments] = useState(0);
+  const [familyPaymentsPeriod, setFamilyPaymentsPeriod] = useState<Period>("fortnight");
+  const [otherGovSupport, setOtherGovSupport] = useState(0);
+  const [otherGovSupportPeriod, setOtherGovSupportPeriod] = useState<Period>("fortnight");
   const [firstHome, setFirstHome] = useState<boolean | null>(null);
   const [homeType, setHomeType] = useState<"new" | "existing" | null>(null);
   const [deposit, setDeposit] = useState(0);
@@ -68,6 +76,14 @@ export default function StartFlow() {
       ? STATE_NAMES[unsureState] ?? ""
       : "";
 
+  const hasChildren = (dependants ?? 0) > 0;
+  // Child-linked payments only count while they actually have children —
+  // clearing them here means going back and answering "No children" can't
+  // leave a stale amount inflating the result.
+  const childSupportMonthly = hasChildren ? toMonthly(childSupport, childSupportPeriod) : 0;
+  const familyPaymentsMonthly = hasChildren ? toMonthly(familyPayments, familyPaymentsPeriod) : 0;
+  const otherGovSupportMonthly = toMonthly(otherGovSupport, otherGovSupportPeriod);
+
   const calc = useMemo(
     () =>
       runCalc({
@@ -80,11 +96,14 @@ export default function StartFlow() {
         firstHome: firstHome !== false,
         capKey,
         region,
+        childSupportMonthly,
+        familyPaymentsMonthly,
+        otherGovSupportMonthly,
         creditCardLimits: ccLimits,
         hecsBalance,
         otherLoanRepayments: otherLoans,
       }),
-    [applicantType, dependants, income1, income2, deposit, homeType, firstHome, capKey, region, ccLimits, hecsBalance, otherLoans],
+    [applicantType, dependants, income1, income2, deposit, homeType, firstHome, capKey, region, ccLimits, hecsBalance, otherLoans, childSupportMonthly, familyPaymentsMonthly, otherGovSupportMonthly],
   );
 
   const heroPreview = mode === "htb" ? calc.htb?.maxPrice ?? 0 : calc.fhg?.maxPrice ?? 0;
@@ -106,6 +125,9 @@ export default function StartFlow() {
         home_type: homeType,
         income_1: income1,
         income_2: income2,
+        child_support_monthly: childSupportMonthly,
+        family_payments_monthly: familyPaymentsMonthly,
+        other_gov_support_monthly: otherGovSupportMonthly,
         deposit,
         credit_card_limits: ccLimits,
         hecs_balance: hecsBalance,
@@ -198,7 +220,7 @@ export default function StartFlow() {
               onBack={back}
               onNext={next}
               nextDisabled={income1 <= 0}
-              footNote="Include regular overtime and bonuses if you receive them."
+              footNote="Include regular overtime and bonuses if you receive them. Child support and government payments are tax free, so enter the amount you actually receive."
             >
               <div className="space-y-4">
                 <MoneyInput
@@ -219,6 +241,47 @@ export default function StartFlow() {
                     maxMessage="That's higher than most salaries — check you haven't added an extra zero."
                   />
                 )}
+
+                <div className="pt-2">
+                  <p className="text-[13px] uppercase tracking-[0.14em] text-[#7C93A9]">Other income</p>
+                  <p className="mt-1 text-[14px] leading-snug text-[#6B87A3]">
+                    Lenders count these towards what you can borrow. Leave anything that doesn&apos;t apply at 0.
+                  </p>
+                </div>
+
+                {/* Child-linked payments — only asked when there are children. */}
+                {hasChildren && (
+                  <>
+                    <MoneyInput
+                      value={childSupport}
+                      onChange={setChildSupport}
+                      period={childSupportPeriod}
+                      onPeriodChange={setChildSupportPeriod}
+                      label="Child support received"
+                      placeholder="0"
+                      hint="Maintenance you receive, not what you pay out."
+                    />
+                    <MoneyInput
+                      value={familyPayments}
+                      onChange={setFamilyPayments}
+                      period={familyPaymentsPeriod}
+                      onPeriodChange={setFamilyPaymentsPeriod}
+                      label="Family Tax Benefit"
+                      placeholder="0"
+                      hint="Family Tax Benefit Part A and Part B combined."
+                    />
+                  </>
+                )}
+
+                <MoneyInput
+                  value={otherGovSupport}
+                  onChange={setOtherGovSupport}
+                  period={otherGovSupportPeriod}
+                  onPeriodChange={setOtherGovSupportPeriod}
+                  label="Other government payments"
+                  placeholder="0"
+                  hint="Disability Support Pension, Carer Payment, Age Pension and similar."
+                />
               </div>
             </StepShell>
           )}

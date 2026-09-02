@@ -28,6 +28,10 @@ export type StartAnswers = {
   home_type: "new" | "existing" | null;
   income_1: number;
   income_2: number;
+  /* all monthly, already converted from whatever period the user picked */
+  child_support_monthly: number;
+  family_payments_monthly: number;
+  other_gov_support_monthly: number;
   deposit: number;
   credit_card_limits: number;
   hecs_balance: number;
@@ -123,8 +127,17 @@ export function buildStartPayload(a: StartAnswers, calc: CalcResult): StartPaylo
     borrowiq_has_hecs: (a.hecs_balance || 0) > 0 ? "yes" : "no",
     borrowiq_has_other_loans: (a.other_loan_repayments_monthly || 0) > 0 ? "yes" : "no",
 
+    /* supplementary income — monthly, non-taxable, counted towards
+       serviceability but deliberately outside borrowiq_combined_income */
+    borrowiq_child_support_monthly: r(a.child_support_monthly),
+    borrowiq_family_payments_monthly: r(a.family_payments_monthly),
+    borrowiq_other_gov_support_monthly: r(a.other_gov_support_monthly),
+    borrowiq_supplementary_income_monthly: r(calc.supplementaryMonthly),
+    borrowiq_has_supplementary_income: calc.supplementaryMonthly > 0 ? "yes" : "no",
+
     /* serviceability detail */
     borrowiq_combined_income: r(calc.combinedIncome),
+    borrowiq_salary_monthly_net: r(calc.salaryMonthlyNet),
     borrowiq_combined_monthly_net_income: r(calc.combinedMonthlyNet),
     borrowiq_living_expenses_monthly: r(calc.livingExpenses),
     borrowiq_total_commitments_monthly: r(calc.totalCommitments),

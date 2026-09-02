@@ -184,6 +184,11 @@ export function Chip({
    soft hint shows under the field but never blocks the Next button, because
    a wrong-looking number is still a lead worth capturing.               */
 
+export type Period = "fortnight" | "month";
+/** 26 fortnights a year, 12 months. */
+export const toMonthly = (amount: number, period: Period) =>
+  period === "fortnight" ? (amount * 26) / 12 : amount;
+
 const digitsOnly = (s: string) => s.replace(/[^\d]/g, "");
 const groupThousands = (s: string) => s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
@@ -197,6 +202,8 @@ export function MoneyInput({
   maxMessage,
   suffix,
   autoFocus,
+  period,
+  onPeriodChange,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -209,6 +216,12 @@ export function MoneyInput({
   /** e.g. "per month" — rendered inside the field, right-aligned. */
   suffix?: string;
   autoFocus?: boolean;
+  /** Renders a fortnightly/monthly switch. The `value` stays whatever unit
+      `period` names — the caller converts. Centrelink and child support are
+      usually known as a fortnightly figure, so offering the switch stops a
+      fortnightly amount being read as a monthly one (a 2.17x overstatement). */
+  period?: Period;
+  onPeriodChange?: (p: Period) => void;
 }) {
   // Held as a string so a half-typed "1,2" doesn't get normalised out from
   // under the cursor, and so the field can be genuinely empty rather than "0".
@@ -231,7 +244,27 @@ export function MoneyInput({
 
   return (
     <div className={`${CARD} p-5`}>
-      <label className="block text-[13px] uppercase tracking-[0.14em] text-[#7C93A9]">{label}</label>
+      <div className="flex items-center gap-3">
+        <label className="flex-1 text-[13px] uppercase tracking-[0.14em] text-[#7C93A9]">{label}</label>
+        {period && onPeriodChange && (
+          <div className="flex shrink-0 rounded-lg border border-[#D6E6F5] bg-[#F4FAFE] p-0.5">
+            {(["fortnight", "month"] as Period[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => onPeriodChange(p)}
+                aria-pressed={period === p}
+                className={[
+                  "rounded-[6px] px-2.5 py-1 text-[12px] font-semibold transition",
+                  period === p ? "bg-[#0076BE] text-white" : "text-[#6B87A3]",
+                ].join(" ")}
+              >
+                {p === "fortnight" ? "Fortnightly" : "Monthly"}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="relative mt-2">
         <span className="font-display pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 text-[34px] leading-none text-[#7C93A9]">
           $
