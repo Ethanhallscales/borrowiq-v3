@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { runCalc, type Mode } from "@/lib/start/startCalc";
 import { STATE_NAMES, type LocationRow, type ResolvedLocation, type CapRegion } from "@/lib/start/locationCaps";
 import { buildStartPayload, submitStart } from "./submitStart";
-import { Chip, LocationPicker, MoneyInput, ProgressBar, StepShell, money, toMonthly, type Period } from "./parts";
+import { Chip, FormingResults, LocationPicker, MoneyInput, ProgressBar, StepShell, money, toMonthly, type Period } from "./parts";
 import Results from "./Results";
 
 const TOTAL_STEPS = 9;
@@ -14,6 +14,9 @@ export default function StartFlow() {
   const startedAt = useRef<number>(Date.now());
   const [step, setStep] = useState(0);
   const [done, setDone] = useState(false);
+  /* the staged "forming results" interstitial between the last question
+     and the contact capture — see `showForming` below. */
+  const [forming, setForming] = useState(false);
   const [mode, setMode] = useState<Mode>("htb"); // Help to Buy is the default
 
   /* answers */
@@ -36,6 +39,7 @@ export default function StartFlow() {
   const [hecsBalance, setHecsBalance] = useState(0);
   const [otherLoans, setOtherLoans] = useState(0);
   const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
@@ -66,7 +70,7 @@ export default function StartFlow() {
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [step, done]);
+  }, [step, done, forming]);
 
   const capKey = selectedLocation ? selectedLocation.capKey : unsureState;
   const region: CapRegion = selectedLocation ? selectedLocation.region : "capital_regional";
@@ -111,9 +115,17 @@ export default function StartFlow() {
   const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
   const back = () => setStep((s) => Math.max(s - 1, 0));
 
+  /* Last question → interstitial → contact capture. The result is already
+     computed; the pause is there so the details step lands as the payoff. */
+  const showForming = () => setForming(true);
+  const formingDone = () => {
+    setForming(false);
+    next();
+  };
+
   const emailOk = /.+@.+\..+/.test(email);
   const phoneOk = phone.replace(/\D/g, "").length >= 9;
-  const captureOk = firstName.trim().length > 1 && emailOk && phoneOk;
+  const captureOk = firstName.trim().length > 1 && lastName.trim().length > 1 && emailOk && phoneOk;
 
   /* ── the one place the lead leaves the flow ──────────────────────────── */
   const handleSubmit = async () => {
@@ -138,6 +150,7 @@ export default function StartFlow() {
         region,
         location_intent: selectedLocation ? "resolved" : "undecided",
         first_name: firstName,
+        last_name: lastName,
         email,
         phone,
         mode_at_submit: mode,
@@ -179,10 +192,14 @@ export default function StartFlow() {
 
   return (
     <div className="min-h-screen">
-      <ProgressBar step={step} total={TOTAL_STEPS} />
+      {!forming && <ProgressBar step={step} total={TOTAL_STEPS} />}
       <div className="mx-auto max-w-md">
         <AnimatePresence mode="wait">
-          {step === 0 && (
+          {forming && (
+            <FormingResults key="forming" locationLabel={locationLabel} onDone={formingDone} />
+          )}
+
+          {!forming && step === 0 && (
             <StepShell
               key="s0"
               title="Who's buying?"
@@ -197,7 +214,7 @@ export default function StartFlow() {
             </StepShell>
           )}
 
-          {step === 1 && (
+          {!forming && step === 1 && (
             <StepShell key="s1" title="Do you have any children?" sub="Lenders count dependants in your living costs." onBack={back} onNext={next} nextDisabled={dependants === null}>
               <div className="grid grid-cols-2 gap-3">
                 {[0, 1, 2, 3].map((n) => (
@@ -212,7 +229,7 @@ export default function StartFlow() {
             </StepShell>
           )}
 
-          {step === 2 && (
+          {!forming && step === 2 && (
             <StepShell
               key="s2"
               title={applicantType === "joint" ? "What do you both earn?" : "What do you earn?"}
@@ -286,7 +303,7 @@ export default function StartFlow() {
             </StepShell>
           )}
 
-          {step === 3 && (
+          {!forming && step === 3 && (
             <StepShell key="s3" title="First home?" sub="This determines which grants and stamp duty concessions you can claim." onBack={back} onNext={next} nextDisabled={firstHome === null}>
               <div className="space-y-3">
                 <Chip wide emoji="🔑" label="Yes, my first" selected={firstHome === true} onClick={() => { setFirstHome(true); setTimeout(next, 220); }} />
@@ -295,7 +312,7 @@ export default function StartFlow() {
             </StepShell>
           )}
 
-          {step === 4 && (
+          {!forming && step === 4 && (
             <StepShell
               key="s4"
               title="Where are you buying?"
@@ -314,7 +331,7 @@ export default function StartFlow() {
             </StepShell>
           )}
 
-          {step === 5 && (
+          {!forming && step === 5 && (
             <StepShell key="s5" title="New or existing?" sub="The government can contribute a larger share on a brand new home." onBack={back} onNext={next} nextDisabled={!homeType}>
               <div className="space-y-3">
                 <Chip wide emoji="🏗️" label="Brand new build" sub="The government can take up to 40%" selected={homeType === "new"} onClick={() => { setHomeType("new"); setTimeout(next, 220); }} />
@@ -323,7 +340,7 @@ export default function StartFlow() {
             </StepShell>
           )}
 
-          {step === 6 && (
+          {!forming && step === 6 && (
             <StepShell
               key="s6"
               title="How much have you saved?"
@@ -343,13 +360,14 @@ export default function StartFlow() {
             </StepShell>
           )}
 
-          {step === 7 && (
+          {!forming && step === 7 && (
             <StepShell
               key="s7"
               title="Do you have any debts?"
               sub="Debts reduce what a lender will approve. Enter 0 in any field that doesn't apply."
               onBack={back}
-              onNext={next}
+              onNext={showForming}
+              nextLabel="See my results →"
               footNote="Credit cards are assessed on the limit, not the balance owing — even an unused card reduces your borrowing power."
             >
               <div className="space-y-4">
@@ -380,11 +398,11 @@ export default function StartFlow() {
             </StepShell>
           )}
 
-          {step === 8 && (
+          {!forming && step === 8 && (
             <StepShell
               key="s8"
               title="Where do we send it?"
-              sub="Your results are ready. Enter your details to see them."
+              sub="Your results are ready. Enter your details to unlock them."
               onBack={back}
               onNext={handleSubmit}
               nextLabel="Show my results →"
@@ -392,13 +410,22 @@ export default function StartFlow() {
               footNote="We'll only use these details to talk you through your results."
             >
               <div className="space-y-3">
-                <input
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="First name"
-                  autoComplete="given-name"
-                  className="h-16 w-full rounded-2xl border border-[#D6E6F5] bg-white px-5 text-[17px] text-[#0B2C4A] outline-none placeholder:text-[#9DB2C6] focus:border-[#0076BE]"
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="First name"
+                    autoComplete="given-name"
+                    className="h-16 w-full min-w-0 rounded-2xl border border-[#D6E6F5] bg-white px-5 text-[17px] text-[#0B2C4A] outline-none placeholder:text-[#9DB2C6] focus:border-[#0076BE]"
+                  />
+                  <input
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Last name"
+                    autoComplete="family-name"
+                    className="h-16 w-full min-w-0 rounded-2xl border border-[#D6E6F5] bg-white px-5 text-[17px] text-[#0B2C4A] outline-none placeholder:text-[#9DB2C6] focus:border-[#0076BE]"
+                  />
+                </div>
                 <input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

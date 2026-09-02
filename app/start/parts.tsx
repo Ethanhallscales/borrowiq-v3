@@ -4,7 +4,7 @@
    existing screen — /start owns these outright.
    Light-blue palette, scoped to this route (see page.tsx). */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { rankLocations } from "@/lib/start/locationSearch";
 import {
@@ -493,5 +493,151 @@ export function BookingPopup({ show, onClose }: { show: boolean; onClose: () => 
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+/* ── forming results ─────────────────────────────────────────────────────
+   Sits between the last question and the contact capture. The numbers are
+   already worked out client-side and instantly — this screen deliberately
+   spends a few seconds showing the work being done, so the details step
+   reads as "unlock the result I just watched you build" rather than
+   "another form". Stages tick off one at a time against a filling bar. */
+
+const FORMING_STAGE_MS = 780;
+const FORMING_HOLD_MS = 460;
+
+export function FormingResults({
+  locationLabel,
+  onDone,
+}: {
+  locationLabel?: string;
+  onDone: () => void;
+}) {
+  const stages = useMemo(
+    () => [
+      "Checking what lenders will approve",
+      locationLabel ? `Matching price limits in ${locationLabel}` : "Matching price limits in your area",
+      "Checking grants and stamp duty concessions",
+      "Building your result",
+    ],
+    [locationLabel],
+  );
+
+  const totalMs = FORMING_STAGE_MS * stages.length + FORMING_HOLD_MS;
+
+  const [stage, setStage] = useState(0);
+  const [pct, setPct] = useState(0);
+
+  // Held in a ref so an inline callback from the parent can't restart the
+  // timers on every render.
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
+
+  useEffect(() => {
+    const timers = stages.map((_, i) =>
+      setTimeout(() => setStage(i + 1), FORMING_STAGE_MS * (i + 1)),
+    );
+    const finish = setTimeout(() => doneRef.current(), totalMs);
+
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / totalMs, 1);
+      setPct(Math.round(t * 100));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      timers.forEach(clearTimeout);
+      clearTimeout(finish);
+      cancelAnimationFrame(raf);
+    };
+  }, [stages, totalMs]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -16 }}
+      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+      className="flex min-h-screen flex-col justify-center px-5 pb-24 pt-10"
+      role="status"
+      aria-live="polite"
+    >
+      {/* pulsing ring — something visibly alive while the bar fills */}
+      <div className="mx-auto mb-8 h-16 w-16">
+        <motion.div
+          animate={{ scale: [1, 1.12, 1], opacity: [0.55, 1, 0.55] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+          className="h-16 w-16 rounded-full border-2 border-[#0076BE] border-t-transparent"
+          style={{ borderTopColor: "transparent" }}
+        />
+      </div>
+
+      <h1 className="text-center font-display text-[34px] leading-[1.05] tracking-wide text-[#0B2C4A]">
+        Forming your results
+      </h1>
+      <p className="mt-2 text-center text-[15px] leading-snug text-[#4E6C8B]">
+        Give us a few seconds — we&apos;re running your numbers against every scheme you might qualify for.
+      </p>
+
+      <div className="mt-8">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[11px] uppercase tracking-[0.18em] text-[#7C93A9]">Calculating</span>
+          <span className="text-[11px] uppercase tracking-[0.18em] text-[#0076BE]">{pct}%</span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[#DCEBF8]">
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-[#0076BE] to-[#00C2FF]"
+            initial={{ width: "0%" }}
+            animate={{ width: "100%" }}
+            transition={{ duration: totalMs / 1000, ease: "easeInOut" }}
+          />
+        </div>
+      </div>
+
+      <ul className="mt-8 space-y-3">
+        {stages.map((label, i) => {
+          const complete = stage > i;
+          const active = stage === i;
+          return (
+            <motion.li
+              key={label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: active || complete ? 1 : 0.45, y: 0 }}
+              transition={{ delay: i * 0.08, duration: 0.3 }}
+              className={`${CARD} flex items-center gap-3 px-4 py-3`}
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                {complete ? (
+                  <motion.span
+                    initial={{ scale: 0.4, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 320, damping: 18 }}
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-[#0076BE] text-[13px] font-bold text-white"
+                  >
+                    ✓
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    animate={active ? { opacity: [0.35, 1, 0.35] } : { opacity: 0.35 }}
+                    transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                    className="h-2.5 w-2.5 rounded-full bg-[#7C93A9]"
+                  />
+                )}
+              </span>
+              <span
+                className={`text-[15px] leading-snug ${
+                  complete || active ? "font-semibold text-[#0B2C4A]" : "text-[#6B87A3]"
+                }`}
+              >
+                {label}
+              </span>
+            </motion.li>
+          );
+        })}
+      </ul>
+    </motion.div>
   );
 }

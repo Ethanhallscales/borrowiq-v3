@@ -42,6 +42,7 @@ export type StartAnswers = {
   region: "capital_regional" | "rest_of_state";
   location_intent: "resolved" | "undecided";
   first_name: string;
+  last_name: string;
   email: string;
   phone: string;
   mode_at_submit: Mode;
@@ -68,7 +69,7 @@ export function buildStartPayload(a: StartAnswers, calc: CalcResult): StartPaylo
     /* ══ EXISTING FIELDS — identical keys, meaning and format to the
           live calculator's payload in app/api/submit/route.ts ══════ */
     firstName: a.first_name.trim(),
-    lastName: "", // /start asks for a first name only
+    lastName: a.last_name.trim(),
     email: a.email.trim(),
     phone: a.phone.trim(),
     source: "borrowiq-start",
