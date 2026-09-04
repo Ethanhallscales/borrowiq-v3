@@ -7,6 +7,7 @@ import { STATE_NAMES, type LocationRow, type ResolvedLocation, type CapRegion } 
 import { buildStartPayload, submitStart } from "./submitStart";
 import { Chip, FormingResults, LocationPicker, MoneyInput, ProgressBar, StepShell, money, toMonthly, type Period } from "./parts";
 import Results from "./Results";
+import { trackViewContent } from "@/lib/pixel";
 
 const TOTAL_STEPS = 9;
 
@@ -54,6 +55,10 @@ export default function StartFlow() {
       campaign: q.get("utm_campaign") ?? "",
       content: q.get("utm_content") ?? "",
     };
+    // Top of the funnel. The PageView fires from the root layout; this marks
+    // the calculator specifically. The lead itself is reported later, from
+    // the results screen — see trackLead in Results.tsx.
+    trackViewContent("borrowiq_start");
   }, []);
 
   /* location */

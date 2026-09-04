@@ -1,19 +1,27 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import StartFlow from "./StartFlow";
 
 export const metadata: Metadata = {
   title: "How much can you actually buy? | Assist Loans",
   description:
     "A 60-second check for first home buyers: your real buying power with a 2% deposit and Help to Buy, or a 5% deposit with no LMI.",
-  robots: { index: false, follow: false },
 };
 
-/* Paid-traffic landing calculator. No nav, no footer links, no exits —
-   the only outbound links are the book-a-call CTAs.
+/* The root layout's theme colour is the dark navy of the preserved v1
+   funnel. This page is light blue, so it states its own. */
+export const viewport: Viewport = {
+  themeColor: "#EAF4FD",
+};
+
+/* THE LIVE CALCULATOR — served at the site root.
+   Paid ads land here (older creative points at /start, which next.config.ts
+   redirects here with the query string intact). No nav, no footer links, no
+   exits — the only outbound links are the book-a-call CTAs.
 
    The app's global theme is dark; this route is light blue. The body
-   override below is scoped with :has(.start-root) so it only applies
-   while /start is on screen — no existing stylesheet is touched. */
+   override below is scoped with :has(.start-root) so it only applies while
+   this page is on screen — no existing stylesheet is touched, and the v1
+   funnel at /v1 keeps its dark palette. */
 export default function StartPage() {
   return (
     <main className="start-root min-h-screen bg-gradient-to-b from-[#F6FBFF] to-[#E4F1FC]">

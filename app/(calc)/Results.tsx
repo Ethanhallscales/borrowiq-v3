@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { CalcResult, Mode, QualifiedReason, SchemeResult } from "@/lib/start/startCalc";
 import { BOOKING_URL, BookBar, BookingPopup, CARD, CTA, CountUpMoney, money } from "./parts";
+import { trackLead, trackFHBResults, trackSchedule } from "@/lib/pixel";
 
 function Bar({ scheme, mode }: { scheme: SchemeResult; mode: Mode }) {
   const total = scheme.maxPrice || 1;
@@ -106,6 +107,7 @@ function HowToGetThere({
         href={BOOKING_URL}
         target="_blank"
         rel="noreferrer"
+        onClick={() => trackSchedule("first_home_buyer")}
         className={`mt-6 flex h-14 items-center justify-center rounded-2xl text-[17px] font-bold transition active:scale-[0.98] ${CTA}`}
       >
         Get a free plan →
@@ -147,6 +149,34 @@ export default function Results({
   useEffect(() => {
     const t = setTimeout(() => setRevealed(true), 900);
     return () => clearTimeout(t);
+  }, []);
+
+  /* ── THE conversion event ──────────────────────────────────────────────
+     The results screen is what counts as a lead: by the time it mounts the
+     contact details are captured and already away to GoHighLevel.
+
+     The ref guard makes this fire exactly once per session. Without it,
+     React StrictMode double-invokes effects in development and every
+     scheme toggle below would re-report the same lead to Meta. */
+  const leadFired = useRef(false);
+  useEffect(() => {
+    if (leadFired.current) return;
+    leadFired.current = true;
+
+    // Value the lead on the headline number they were actually shown, and
+    // fall back to raw capacity if a scheme produced no price.
+    const shown = mode === "htb" ? calc.htb : calc.fhg;
+    const value = Math.round(shown?.maxPrice || calc.borrowingCapacity || 0);
+
+    trackLead({
+      path: "first_home_buyer",
+      currency: "AUD",
+      value,
+      qualified: calc.qualified,
+    });
+    trackFHBResults(calc.qualified);
+    // Intentionally mount-only: this reports the lead once, not on re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The 15s book-a-call popup is for qualified leads only. Unqualified leads
