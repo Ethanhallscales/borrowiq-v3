@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { trackSchedule } from "@/lib/pixel";
 import { rankLocations } from "@/lib/start/locationSearch";
 import {
   SELECTABLE_STATES,
@@ -441,6 +442,7 @@ export function BookBar({ position }: { position: "top" | "bottom" }) {
           href={BOOKING_URL}
           target="_blank"
           rel="noreferrer"
+          onClick={() => trackSchedule("first_home_buyer")}
           className={`shrink-0 rounded-xl px-4 py-3 text-[14px] font-bold transition active:scale-[0.97] ${CTA}`}
         >
           Book a free call →
@@ -481,7 +483,7 @@ export function BookingPopup({ show, onClose }: { show: boolean; onClose: () => 
               href={BOOKING_URL}
               target="_blank"
               rel="noreferrer"
-              onClick={onClose}
+              onClick={() => { trackSchedule("first_home_buyer"); onClose(); }}
               className={`mt-5 flex h-14 items-center justify-center rounded-2xl text-[17px] font-bold transition active:scale-[0.98] ${CTA}`}
             >
               Book my free session →

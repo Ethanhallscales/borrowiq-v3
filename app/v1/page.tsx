@@ -64,7 +64,7 @@ function asQuiz(d: Record<string, any>): Partial<QuizData> { return d as Partial
 // ─── Webhook helper — fire and forget ─────────────────────────────────────────
 function submitLead(quiz: QuizData, contact: ContactData) {
   const payload: QuizData = { ...quiz, ...contact };
-  fetch("/api/submit", {
+  fetch("/v1/api/submit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

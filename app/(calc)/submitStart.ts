@@ -1,25 +1,24 @@
 /* ============================================================
-   /start SUBMIT HANDLER
+   PRIMARY SUBMIT HANDLER  (site root)
 
-   Builds the GoHighLevel payload and posts it to the /start submit
-   route, which forwards to the SAME GHL_WEBHOOK_URL endpoint the live
-   BorrowIQ calculator uses (app/api/submit/route.ts).
+   Builds the GoHighLevel payload and posts it to /api/submit, which
+   forwards to the SAME GHL_WEBHOOK_URL endpoint the preserved v1 funnel
+   uses via /v1/api/submit.
 
-   FIELD CONTRACT: every key the live calculator sends is reproduced
-   here unchanged, with the same name, meaning and format. Everything
-   /start collects or calculates on top of that is added as a NEW key.
+   FIELD CONTRACT: every key the v1 calculator sends is reproduced here
+   unchanged, with the same name, meaning and format. Everything this
+   funnel collects or calculates on top of that is added as a NEW key.
    Nothing existing is renamed or dropped.
 
-   PATH NOTE: when /start is promoted to the site root (and the current
-   funnel moves to /v1), this endpoint constant is the only line that
-   needs to change — the outbound GHL URL is an env var and is not
-   affected, and GHL should route on `source`, never on the path.
+   ROUTING: GHL tells the two funnels apart on `source`, never on the
+   path — this one sends "borrowiq-start", v1 sends "borrowiq". The
+   outbound GHL URL is an env var and is shared by both.
    ============================================================ */
 
 import type { CalcResult, Mode, QualifiedReason } from "@/lib/start/startCalc";
 import { STATE_NAMES } from "@/lib/start/locationCaps";
 
-export const START_SUBMIT_ENDPOINT = "/start/api/submit";
+export const START_SUBMIT_ENDPOINT = "/api/submit";
 
 export type StartAnswers = {
   applicant_type: "single" | "joint";

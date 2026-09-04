@@ -1,3 +1,15 @@
+/* ============================================================
+   v1 SUBMIT ROUTE  →  POST /v1/api/submit
+
+   The PRESERVED original BorrowIQ funnel (app/v1/page.tsx). Kept live so
+   existing links, ad creative and GHL history keep working after the newer
+   calculator took over the site root.
+
+   Forwards to the SAME process.env.GHL_WEBHOOK_URL as the root funnel;
+   the two are told apart in GHL by `source` ("borrowiq" here,
+   "borrowiq-start" at the root), never by the path.
+   ============================================================ */
+
 import type { QuizData } from "@/lib/types";
 import { calculatePathA, calculatePathN } from "@/lib/calculations";
 import { calculateGrants } from "@/lib/grants";
@@ -22,7 +34,10 @@ export async function POST(request: Request) {
   return Response.json({ ok: true });
 }
 
-async function buildAndSend(quiz: QuizData, webhookUrl: string) {
+/* Exported so the root /api/submit route can delegate to it: for a short
+   window after deploy, sessions that loaded the old JS while v1 still served
+   the site root will POST QuizData to /api/submit. See that route. */
+export async function buildAndSend(quiz: QuizData, webhookUrl: string) {
   const pathId = quiz.path ?? "first-home";
   const state  = quiz.state ?? quiz.targetState ?? "QLD";
 
