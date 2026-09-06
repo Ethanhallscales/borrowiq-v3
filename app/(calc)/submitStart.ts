@@ -50,6 +50,10 @@ export type StartAnswers = {
   utm_medium: string;
   utm_campaign: string;
   utm_content: string;
+  /* Meta's own ad-level parameters, captured from the landing URL. */
+  utm_adset: string;
+  utm_ad: string;
+  fbclid: string;
 };
 
 export type StartPayload = Record<string, string | number>;
@@ -108,6 +112,22 @@ export function buildStartPayload(a: StartAnswers, calc: CalcResult): StartPaylo
     borrowiq_utm_medium: a.utm_medium,
     borrowiq_utm_campaign: a.utm_campaign,
     borrowiq_utm_content: a.utm_content,
+
+    /* ══ ATTRIBUTION — standard UTM names ════════════════════════════
+       GHL and the ad platforms both expect the plain utm_* names, so the
+       same values go out again unprefixed. The borrowiq_utm_* keys above
+       stay exactly as they are — existing GHL workflows read those.
+
+       utm_term carries the ad set and utm_content the ad, which is how
+       Meta's URL builder lays them out. utm_content falls back to the
+       landing URL's own utm_content when no utm_ad is present, so traffic
+       tagged with plain UTMs still reports an ad-level value. */
+    utm_source: a.utm_source,
+    utm_medium: a.utm_medium,
+    utm_campaign: a.utm_campaign,
+    utm_term: a.utm_adset,
+    utm_content: a.utm_ad || a.utm_content,
+    fbclid: a.fbclid,
 
     /* ══ NEW FIELDS — create matching custom fields in GHL ═══════════ */
 

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { CalcResult, Mode, QualifiedReason, SchemeResult } from "@/lib/start/startCalc";
 import { BOOKING_URL, BookBar, BookingPopup, CARD, CTA, CountUpMoney, money } from "./parts";
-import { trackLead, trackFHBResults, trackSchedule } from "@/lib/pixel";
+import { trackCompleteRegistration, trackLead, trackFHBResults, trackSchedule } from "@/lib/pixel";
 
 function Bar({ scheme, mode }: { scheme: SchemeResult; mode: Mode }) {
   const total = scheme.maxPrice || 1;
@@ -173,6 +173,15 @@ export default function Results({
       currency: "AUD",
       value,
       qualified: calc.qualified,
+    });
+    /* Meta's ad set optimises for CompleteRegistration, so the same moment
+       has to report both: Lead for reporting, CompleteRegistration for
+       delivery. Inside the same ref guard, so one submission sends exactly
+       one of each. */
+    trackCompleteRegistration({
+      path: "first_home_buyer",
+      currency: "AUD",
+      value,
     });
     trackFHBResults(calc.qualified);
     // Intentionally mount-only: this reports the lead once, not on re-render.

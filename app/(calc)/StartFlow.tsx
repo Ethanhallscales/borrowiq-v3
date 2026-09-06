@@ -7,9 +7,68 @@ import { STATE_NAMES, type LocationRow, type ResolvedLocation, type CapRegion } 
 import { buildStartPayload, submitStart } from "./submitStart";
 import { Chip, FormingResults, LocationPicker, MoneyInput, ProgressBar, StepShell, money, toMonthly, type Period } from "./parts";
 import Results from "./Results";
-import { trackViewContent } from "@/lib/pixel";
+import { trackPathSelected, trackViewContent } from "@/lib/pixel";
 
 const TOTAL_STEPS = 9;
+
+/* ── attribution ──────────────────────────────────────────────────────────
+   Paid traffic lands here with the ad platform's parameters on the URL, and
+   they have to survive all the way to the GHL payload nine steps later.
+
+   Read once on the first page view and mirrored into sessionStorage, so a
+   reload — or a back/forward that drops the query string — can't leave the
+   lead unattributed. First touch wins: a later page view without parameters
+   never overwrites what the landing view captured. */
+const ATTRIBUTION_KEY = "borrowiq_attribution";
+
+const ATTRIBUTION_PARAMS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_adset",
+  "utm_ad",
+  "fbclid",
+] as const;
+
+type Attribution = Record<(typeof ATTRIBUTION_PARAMS)[number], string>;
+
+const EMPTY_ATTRIBUTION = Object.fromEntries(
+  ATTRIBUTION_PARAMS.map((k) => [k, ""]),
+) as Attribution;
+
+function readAttribution(): Attribution {
+  const q = new URLSearchParams(window.location.search);
+  const fromUrl = { ...EMPTY_ATTRIBUTION };
+  let hasAny = false;
+  for (const key of ATTRIBUTION_PARAMS) {
+    const value = q.get(key);
+    if (value) {
+      fromUrl[key] = value;
+      hasAny = true;
+    }
+  }
+
+  /* sessionStorage throws outright in some private-browsing modes, and a
+     stored value can be anything — attribution is never worth breaking the
+     calculator over, so every access here fails soft. */
+  if (hasAny) {
+    try {
+      sessionStorage.setItem(ATTRIBUTION_KEY, JSON.stringify(fromUrl));
+    } catch {
+      /* not stored — the in-memory copy still carries this session */
+    }
+    return fromUrl;
+  }
+
+  try {
+    const saved = sessionStorage.getItem(ATTRIBUTION_KEY);
+    if (saved) return { ...EMPTY_ATTRIBUTION, ...(JSON.parse(saved) as Partial<Attribution>) };
+  } catch {
+    /* unreadable or malformed — fall through to empty */
+  }
+  return EMPTY_ATTRIBUTION;
+}
 
 export default function StartFlow() {
   const startedAt = useRef<number>(Date.now());
@@ -44,17 +103,9 @@ export default function StartFlow() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
-  /* attribution — /start is the paid-ad landing page, so the UTMs on the
-     first page view are the ones that matter. Captured once on mount. */
-  const utm = useRef({ source: "", medium: "", campaign: "", content: "" });
+  const attribution = useRef<Attribution>(EMPTY_ATTRIBUTION);
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    utm.current = {
-      source: q.get("utm_source") ?? "",
-      medium: q.get("utm_medium") ?? "",
-      campaign: q.get("utm_campaign") ?? "",
-      content: q.get("utm_content") ?? "",
-    };
+    attribution.current = readAttribution();
     // Top of the funnel. The PageView fires from the root layout; this marks
     // the calculator specifically. The lead itself is reported later, from
     // the results screen — see trackLead in Results.tsx.
@@ -120,6 +171,15 @@ export default function StartFlow() {
   const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
   const back = () => setStep((s) => Math.max(s - 1, 0));
 
+  /* Step 1. Mirrors the v1 funnel's PathSelected event so the two funnels
+     stay comparable in Meta. Only fires on an actual change — going back and
+     re-picking the same answer shouldn't count as a second selection. */
+  const choosePath = (type: "single" | "joint") => {
+    if (applicantType !== type) trackPathSelected(type);
+    setApplicantType(type);
+    setTimeout(next, 220);
+  };
+
   /* Last question → interstitial → contact capture. The result is already
      computed; the pause is there so the details step lands as the payoff. */
   const showForming = () => setForming(true);
@@ -133,7 +193,15 @@ export default function StartFlow() {
   const captureOk = firstName.trim().length > 1 && lastName.trim().length > 1 && emailOk && phoneOk;
 
   /* ── the one place the lead leaves the flow ──────────────────────────── */
+  /* One submission per session. Without this, a double-tap on "Show my
+     results" posts the same lead to GHL twice. The pixel events are guarded
+     separately, on the results screen. */
+  const submitting = useRef(false);
+
   const handleSubmit = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
+
     const payload = buildStartPayload(
       {
         applicant_type: applicantType ?? "single",
@@ -160,10 +228,13 @@ export default function StartFlow() {
         phone,
         mode_at_submit: mode,
         started_at: startedAt.current,
-        utm_source: utm.current.source,
-        utm_medium: utm.current.medium,
-        utm_campaign: utm.current.campaign,
-        utm_content: utm.current.content,
+        utm_source: attribution.current.utm_source,
+        utm_medium: attribution.current.utm_medium,
+        utm_campaign: attribution.current.utm_campaign,
+        utm_content: attribution.current.utm_content,
+        utm_adset: attribution.current.utm_adset,
+        utm_ad: attribution.current.utm_ad,
+        fbclid: attribution.current.fbclid,
       },
       calc,
     );
@@ -213,8 +284,8 @@ export default function StartFlow() {
               nextDisabled={!applicantType}
             >
               <div className="space-y-3">
-                <Chip wide emoji="🙋" label="Just me" selected={applicantType === "single"} onClick={() => { setApplicantType("single"); setTimeout(next, 220); }} />
-                <Chip wide emoji="👫" label="Me and my partner" selected={applicantType === "joint"} onClick={() => { setApplicantType("joint"); setTimeout(next, 220); }} />
+                <Chip wide emoji="🙋" label="Just me" selected={applicantType === "single"} onClick={() => choosePath("single")} />
+                <Chip wide emoji="👫" label="Me and my partner" selected={applicantType === "joint"} onClick={() => choosePath("joint")} />
               </div>
             </StepShell>
           )}
