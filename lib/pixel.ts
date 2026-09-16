@@ -20,33 +20,12 @@ export function trackViewContent(contentName: string) {
   fbq("track", "ViewContent", { content_name: contentName });
 }
 
+/* BROWSER-side CompleteRegistration is v1 funnel ONLY (app/v1).
+   The root calculator fires NO browser conversion event: it sends
+   CompleteRegistration from the SERVER, for qualified leads only.
+   See lib/meta-capi.ts. */
 export function trackCompleteRegistration(params: { path: string; currency: string; value: number }) {
   fbq("track", "CompleteRegistration", params);
-}
-
-/**
- * THE conversion event for the calculator at the site root.
- *
- * Fired once, when the results screen mounts — i.e. after the lead has been
- * captured AND handed to GoHighLevel. This is the event Meta ad sets should
- * optimise for; nothing earlier in the flow counts as a lead.
- *
- * `value` is the modelled purchase price so Meta can weight higher-value
- * leads; it is a modelled figure, not revenue.
- */
-export function trackLead(params: {
-  path: string;
-  currency: string;
-  value: number;
-  qualified: boolean;
-}) {
-  fbq("track", "Lead", {
-    content_name: "borrowiq_results",
-    content_category: params.path,
-    currency: params.currency,
-    value: params.value,
-    qualified: params.qualified,
-  });
 }
 
 export function trackSchedule(path: string) {
@@ -66,6 +45,25 @@ export function trackPurchase() {
 }
 
 // ── Custom events ───────────────────────────────────────────────────────────
+
+/**
+ * The root calculator's ONLY browser-side submit event.
+ *
+ * Custom, not standard: it fires for every completed calculator, qualified
+ * or not, so it must never be something an ad set can optimise for. The
+ * server sends the same event with the same `eventID` and Meta collapses
+ * the pair into one — see lib/meta-capi.ts.
+ *
+ * The conversion events (CompleteRegistration and Lead) are sent
+ * SERVER-SIDE ONLY, for qualified submissions only. Do not add a browser
+ * `fbq('track', ...)` conversion to the calculator flow: it would report
+ * every submission as a conversion again, which is the exact problem this
+ * replaced — Meta would go back to optimising for people who fill in
+ * forms rather than people who can actually buy.
+ */
+export function trackCalcSubmit(eventId: string) {
+  fbq("trackCustom", "CalcSubmit", {}, { eventID: eventId });
+}
 
 export function trackPathSelected(path: string) {
   fbq("trackCustom", "PathSelected", { path });
