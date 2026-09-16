@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { CalcResult, Mode, QualifiedReason, SchemeResult } from "@/lib/start/startCalc";
 import { BOOKING_URL, BookBar, BookingPopup, CARD, CTA, CountUpMoney, money } from "./parts";
-import { trackCompleteRegistration, trackLead, trackFHBResults, trackSchedule } from "@/lib/pixel";
+import { trackFHBResults, trackSchedule } from "@/lib/pixel";
 
 function Bar({ scheme, mode }: { scheme: SchemeResult; mode: Mode }) {
   const total = scheme.maxPrice || 1;
@@ -151,40 +151,29 @@ export default function Results({
     return () => clearTimeout(t);
   }, []);
 
-  /* ── THE conversion event ──────────────────────────────────────────────
-     The results screen is what counts as a lead: by the time it mounts the
-     contact details are captured and already away to GoHighLevel.
+  /* ── reporting only ───────────────────────────────────────────────────
+     This screen no longer reports a conversion to Meta.
 
-     The ref guard makes this fire exactly once per session. Without it,
-     React StrictMode double-invokes effects in development and every
-     scheme toggle below would re-report the same lead to Meta. */
-  const leadFired = useRef(false);
+     It used to fire Lead AND CompleteRegistration here, for every single
+     submission. That taught Meta to find people who finish forms, and the
+     unqualified share climbed from ~29% to ~47% in ten days.
+
+     Both conversion events are now sent SERVER-SIDE, for qualified leads
+     only, from /api/submit — see lib/meta-capi.ts. The browser's only
+     submit event is CalcSubmit, fired in StartFlow where the event_id is
+     minted so the server event can dedupe against it.
+
+     FHB_Results stays: it is a custom event, it carries the qualified
+     flag, and no ad set optimises for it.
+
+     The ref guard survives React StrictMode's double-invoked effects in
+     development. */
+  const reported = useRef(false);
   useEffect(() => {
-    if (leadFired.current) return;
-    leadFired.current = true;
-
-    // Value the lead on the headline number they were actually shown, and
-    // fall back to raw capacity if a scheme produced no price.
-    const shown = mode === "htb" ? calc.htb : calc.fhg;
-    const value = Math.round(shown?.maxPrice || calc.borrowingCapacity || 0);
-
-    trackLead({
-      path: "first_home_buyer",
-      currency: "AUD",
-      value,
-      qualified: calc.qualified,
-    });
-    /* Meta's ad set optimises for CompleteRegistration, so the same moment
-       has to report both: Lead for reporting, CompleteRegistration for
-       delivery. Inside the same ref guard, so one submission sends exactly
-       one of each. */
-    trackCompleteRegistration({
-      path: "first_home_buyer",
-      currency: "AUD",
-      value,
-    });
+    if (reported.current) return;
+    reported.current = true;
     trackFHBResults(calc.qualified);
-    // Intentionally mount-only: this reports the lead once, not on re-render.
+    // Intentionally mount-only: reports once, not on every scheme toggle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

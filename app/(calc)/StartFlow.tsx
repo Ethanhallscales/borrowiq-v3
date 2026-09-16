@@ -7,7 +7,7 @@ import { STATE_NAMES, type LocationRow, type ResolvedLocation, type CapRegion } 
 import { buildStartPayload, submitStart } from "./submitStart";
 import { Chip, FormingResults, LocationPicker, MoneyInput, ProgressBar, StepShell, money, toMonthly, type Period } from "./parts";
 import Results from "./Results";
-import { trackPathSelected, trackViewContent } from "@/lib/pixel";
+import { trackCalcSubmit, trackPathSelected, trackViewContent } from "@/lib/pixel";
 
 const TOTAL_STEPS = 9;
 
@@ -36,6 +36,43 @@ type Attribution = Record<(typeof ATTRIBUTION_PARAMS)[number], string>;
 const EMPTY_ATTRIBUTION = Object.fromEntries(
   ATTRIBUTION_PARAMS.map((k) => [k, ""]),
 ) as Attribution;
+
+/* ── Meta identifiers ─────────────────────────────────────────────────────
+   _fbp is the pixel's browser id, _fbc encodes the ad click that brought
+   them here. Both are set by fbevents.js and both sharpen how well Meta
+   can match a SERVER-side event back to a real person — without them a
+   conversion API event is matching on hashed contact details alone. */
+function readCookie(name: string): string {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+/**
+ * _fbc, or a reconstruction of it.
+ *
+ * The cookie only exists once fbevents.js has loaded and seen the fbclid.
+ * If someone submits before that, or blocks the pixel, we rebuild it from
+ * the click id in Meta's documented `fb.1.{timestamp}.{fbclid}` shape.
+ *
+ * Falls back to the stored first-touch fbclid, so a reload that drops the
+ * query string doesn't cost us the click attribution.
+ */
+function readFbc(storedFbclid: string): string {
+  const cookie = readCookie("_fbc");
+  if (cookie) return cookie;
+  const fbclid = new URLSearchParams(window.location.search).get("fbclid") || storedFbclid;
+  return fbclid ? `fb.1.${Date.now()}.${fbclid}` : "";
+}
+
+/** Ties the browser CalcSubmit to its server twin so Meta counts them once. */
+function newEventId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // randomUUID needs a secure context; this only bites on plain-http testing.
+  return `ev-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
 
 function readAttribution(): Attribution {
   const q = new URLSearchParams(window.location.search);
@@ -107,8 +144,8 @@ export default function StartFlow() {
   useEffect(() => {
     attribution.current = readAttribution();
     // Top of the funnel. The PageView fires from the root layout; this marks
-    // the calculator specifically. The lead itself is reported later, from
-    // the results screen — see trackLead in Results.tsx.
+    // the calculator specifically. The lead itself is reported from the
+    // SERVER at submit time, and only when qualified — see lib/meta-capi.ts.
     trackViewContent("borrowiq_start");
   }, []);
 
@@ -202,6 +239,18 @@ export default function StartFlow() {
     if (submitting.current) return;
     submitting.current = true;
 
+    /* One id for this submission, shared by the browser CalcSubmit below
+       and the server's CalcSubmit in /api/submit. Meta dedupes on it, so
+       the pair counts as one event rather than two. */
+    const eventId = newEventId();
+    const fbp = readCookie("_fbp");
+    const fbc = readFbc(attribution.current.fbclid);
+
+    /* The browser's ONLY submit event, and a custom one: it fires for
+       qualified and unqualified alike, so nothing should optimise for it.
+       The qualified-only conversions go from the server. */
+    trackCalcSubmit(eventId);
+
     const payload = buildStartPayload(
       {
         applicant_type: applicantType ?? "single",
@@ -235,6 +284,10 @@ export default function StartFlow() {
         utm_adset: attribution.current.utm_adset,
         utm_ad: attribution.current.utm_ad,
         fbclid: attribution.current.fbclid,
+        event_id: eventId,
+        fbp,
+        fbc,
+        page_url: window.location.href,
       },
       calc,
     );

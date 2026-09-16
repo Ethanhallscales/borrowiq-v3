@@ -54,6 +54,11 @@ export type StartAnswers = {
   utm_adset: string;
   utm_ad: string;
   fbclid: string;
+  /* Meta Conversions API — see lib/meta-capi.ts */
+  event_id: string;
+  fbp: string;
+  fbc: string;
+  page_url: string;
 };
 
 export type StartPayload = Record<string, string | number>;
@@ -197,6 +202,23 @@ export function buildStartPayload(a: StartAnswers, calc: CalcResult): StartPaylo
     borrowiq_time_to_complete_seconds: a.started_at
       ? Math.round((Date.now() - a.started_at) / 1000)
       : 0,
+
+    /* ══ META CONVERSIONS API ════════════════════════════════════════
+       ADDITIVE, like everything else below the line above: no existing
+       key changes name, meaning or format.
+
+       event_id and the two Meta cookies go to the server so it can send
+       the matching CalcSubmit (deduped against the browser's) and, when
+       qualified, the conversion events. The route forwards event_id, fbp
+       and fbc to GHL as well — having the same id on the contact is what
+       lets a lead in the CRM be traced back to a specific Meta event.
+
+       page_url becomes the event_source_url on the Meta side. The route
+       strips it before the GHL forward: GHL has no field for it. */
+    event_id: a.event_id,
+    fbp: a.fbp,
+    fbc: a.fbc,
+    page_url: a.page_url,
   };
 
   return payload;
