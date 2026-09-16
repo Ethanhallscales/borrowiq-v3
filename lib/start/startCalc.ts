@@ -50,6 +50,63 @@ export const FHG_LOAN_PCT = 0.95;
    the Qualification block in runCalc for why this is the only test.      */
 export const QUALIFY_PRICE = 500000;
 
+/* ── "that's a balance, not a repayment" ──────────────────────────────────
+   The debts step asks for a HECS balance and then, directly underneath, a
+   monthly loan repayment. People answer the second the way they answered
+   the first and type what they still owe.
+
+   It is not a rounding error — it zeroes the lead. A $45,000 "monthly"
+   repayment wipes out every dollar of surplus, so borrowing capacity comes
+   out at exactly $0 and a strong buyer is tagged NURTURE. Of 477 live
+   submissions, 7 came back with an income over $100k AND zero capacity;
+   every one of them was this mistake, and 4 of them would otherwise have
+   qualified.
+
+   The live data separates cleanly: real repayments sit between $300 and
+   $1,200 a month and taper out by $3,500, then there is NOTHING until the
+   balances start at $10,000. Genuine high repayments around $2,500-$3,500
+   all produced sensible capacities, so the thresholds below deliberately
+   leave them alone. */
+export const LOAN_BALANCE_DETECTION = {
+  /* No real car or personal loan repayment reaches this. The observed gap
+     between the two populations runs from $3,500 to $10,000, so $5,000
+     sits inside empty space rather than on top of anyone. */
+  monthlyRepaymentCeiling: 5000,
+  /* Catches a smaller balance typed by a lower earner, which the flat
+     ceiling would miss. Half of gross monthly income is far beyond what
+     any lender would allow to service a car loan. */
+  shareOfMonthlyGross: 0.5,
+  /* The ratio rule is only meaningful against a real income. Without this
+     floor, a junk or half-finished income turns every figure into a
+     "balance" — $9 of income made a genuine $600 repayment look absurd
+     and converted it to $12. Below the floor, only the flat ceiling
+     applies. */
+  minIncomeForShareRule: 20000,
+} as const;
+
+/* What we assume when converting a balance into a repayment: a five-year
+   term at 8.5%, which is an ordinary secured car loan. Used only to keep a
+   good lead alive and visibly labelled — the broker confirms the real
+   figure on the call. */
+export const LOAN_BALANCE_ASSUMPTION = { termMonths: 60, annualRate: 0.085 } as const;
+
+/** Is this figure a loan balance wearing a repayment's clothes? */
+export function looksLikeLoanBalance(entered: number, combinedGrossIncome: number): boolean {
+  if (!(entered > 0)) return false;
+  if (entered >= LOAN_BALANCE_DETECTION.monthlyRepaymentCeiling) return true;
+  if ((combinedGrossIncome || 0) < LOAN_BALANCE_DETECTION.minIncomeForShareRule) return false;
+  const monthlyGross = combinedGrossIncome / 12;
+  return entered > monthlyGross * LOAN_BALANCE_DETECTION.shareOfMonthlyGross;
+}
+
+/** Amortised monthly repayment for a balance, on the assumption above. */
+export function monthlyRepaymentForBalance(balance: number): number {
+  if (!(balance > 0)) return 0;
+  const { termMonths, annualRate } = LOAN_BALANCE_ASSUMPTION;
+  const r = annualRate / 12;
+  return Math.round((balance * r) / (1 - Math.pow(1 + r, -termMonths)));
+}
+
 export type Mode = "htb" | "fhg";
 export type ApplicantType = "single" | "joint";
 

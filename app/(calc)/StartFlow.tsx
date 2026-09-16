@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { runCalc, type Mode } from "@/lib/start/startCalc";
+import {
+  runCalc,
+  looksLikeLoanBalance,
+  monthlyRepaymentForBalance,
+  type Mode,
+} from "@/lib/start/startCalc";
 import { STATE_NAMES, type LocationRow, type ResolvedLocation, type CapRegion } from "@/lib/start/locationCaps";
 import { buildStartPayload, submitStart } from "./submitStart";
 import { Chip, FormingResults, LocationPicker, MoneyInput, ProgressBar, StepShell, money, toMonthly, type Period } from "./parts";
@@ -135,6 +140,10 @@ export default function StartFlow() {
   const [ccLimits, setCcLimits] = useState(0);
   const [hecsBalance, setHecsBalance] = useState(0);
   const [otherLoans, setOtherLoans] = useState(0);
+  /* Set when the user insists the figure really is a monthly repayment.
+     Keyed to the amount so that typing a NEW implausible number re-arms the
+     check rather than inheriting the last override. */
+  const [loanAmountTakenAsMonthly, setLoanAmountTakenAsMonthly] = useState<number | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -181,6 +190,23 @@ export default function StartFlow() {
   const familyPaymentsMonthly = hasChildren ? toMonthly(familyPayments, familyPaymentsPeriod) : 0;
   const otherGovSupportMonthly = toMonthly(otherGovSupport, otherGovSupportPeriod);
 
+  /* ── balance typed into a repayment field ──────────────────────────────
+     Left alone, this is the single most expensive mistake in the funnel: it
+     drives borrowing capacity to $0 and files a strong buyer as NURTURE.
+     See LOAN_BALANCE_DETECTION in startCalc for what counts as implausible
+     and why those thresholds.
+
+     We convert rather than merely warn, so the results they are shown are
+     the right ones — and we say so on screen, with an undo, so it is never
+     a silent rewrite of their answer. */
+  const otherLoansGrossIncome = income1 + (applicantType === "joint" ? income2 : 0);
+  const otherLoansIsBalance =
+    looksLikeLoanBalance(otherLoans, otherLoansGrossIncome) &&
+    loanAmountTakenAsMonthly !== otherLoans;
+  const otherLoansMonthly = otherLoansIsBalance
+    ? monthlyRepaymentForBalance(otherLoans)
+    : otherLoans;
+
   const calc = useMemo(
     () =>
       runCalc({
@@ -198,9 +224,9 @@ export default function StartFlow() {
         otherGovSupportMonthly,
         creditCardLimits: ccLimits,
         hecsBalance,
-        otherLoanRepayments: otherLoans,
+        otherLoanRepayments: otherLoansMonthly,
       }),
-    [applicantType, dependants, income1, income2, deposit, homeType, firstHome, capKey, region, ccLimits, hecsBalance, otherLoans, childSupportMonthly, familyPaymentsMonthly, otherGovSupportMonthly],
+    [applicantType, dependants, income1, income2, deposit, homeType, firstHome, capKey, region, ccLimits, hecsBalance, otherLoansMonthly, childSupportMonthly, familyPaymentsMonthly, otherGovSupportMonthly],
   );
 
   const heroPreview = mode === "htb" ? calc.htb?.maxPrice ?? 0 : calc.fhg?.maxPrice ?? 0;
@@ -265,7 +291,7 @@ export default function StartFlow() {
         deposit,
         credit_card_limits: ccLimits,
         hecs_balance: hecsBalance,
-        other_loan_repayments_monthly: otherLoans,
+        other_loan_repayments_monthly: otherLoansMonthly,
         suburb: selectedLocation?.locality ?? null,
         postcode: selectedLocation?.postcode ?? null,
         state: capKey,
@@ -284,6 +310,8 @@ export default function StartFlow() {
         utm_adset: attribution.current.utm_adset,
         utm_ad: attribution.current.utm_ad,
         fbclid: attribution.current.fbclid,
+        loan_entry_corrected: otherLoansIsBalance,
+        loan_entry_raw: otherLoans,
         event_id: eventId,
         fbp,
         fbc,
@@ -520,7 +548,18 @@ export default function StartFlow() {
                   label="Car / personal loan repayments"
                   placeholder="0"
                   suffix="per month"
-                  hint="The combined monthly repayment across all of them. Enter 0 if you have none."
+                  hint="The combined monthly repayment across all of them — not the amount owing. Enter 0 if you have none."
+                  correction={
+                    otherLoansIsBalance
+                      ? {
+                          message: `That looks like the total still owing rather than a monthly repayment, so we've used ${money(
+                            otherLoansMonthly,
+                          )} a month — what ${money(otherLoans)} would cost over five years.`,
+                          undoLabel: `No, I really do repay ${money(otherLoans)} a month`,
+                          onUndo: () => setLoanAmountTakenAsMonthly(otherLoans),
+                        }
+                      : undefined
+                  }
                 />
               </div>
               {livePreview}

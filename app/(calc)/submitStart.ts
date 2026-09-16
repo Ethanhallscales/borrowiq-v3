@@ -54,6 +54,10 @@ export type StartAnswers = {
   utm_adset: string;
   utm_ad: string;
   fbclid: string;
+  /* true when the "monthly repayment" figure was read as a balance and
+     converted — see looksLikeLoanBalance in lib/start/startCalc.ts */
+  loan_entry_corrected: boolean;
+  loan_entry_raw: number;
   /* Meta Conversions API — see lib/meta-capi.ts */
   event_id: string;
   fbp: string;
@@ -146,7 +150,16 @@ export function buildStartPayload(a: StartAnswers, calc: CalcResult): StartPaylo
     borrowiq_region: a.region,
     borrowiq_location_intent: a.location_intent,
 
-    /* debts detail */
+    /* debts detail
+
+       borrowiq_car_loan_monthly above is the figure the assessment actually
+       used. When someone typed what they still owe into the monthly field,
+       that is the CONVERTED repayment, and the two keys below record that
+       it happened and what they originally typed — so a broker on the call
+       can confirm the real repayment instead of guessing which one it was. */
+    borrowiq_loan_entry_corrected: a.loan_entry_corrected ? "yes" : "no",
+    borrowiq_loan_entry_raw: r(a.loan_entry_raw),
+
     borrowiq_other_loan_repayments_monthly: r(a.other_loan_repayments_monthly),
     borrowiq_has_credit_cards: (a.credit_card_limits || 0) > 0 ? "yes" : "no",
     borrowiq_has_hecs: (a.hecs_balance || 0) > 0 ? "yes" : "no",

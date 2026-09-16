@@ -205,6 +205,7 @@ export function MoneyInput({
   autoFocus,
   period,
   onPeriodChange,
+  correction,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -223,6 +224,10 @@ export function MoneyInput({
       fortnightly amount being read as a monthly one (a 2.17x overstatement). */
   period?: Period;
   onPeriodChange?: (p: Period) => void;
+  /** Shown when the figure entered reads as a balance rather than a
+      repayment. Says what we did with it and offers a way to undo, so the
+      correction is never something that happens behind the user's back. */
+  correction?: { message: string; undoLabel: string; onUndo: () => void };
 }) {
   // Held as a string so a half-typed "1,2" doesn't get normalised out from
   // under the cursor, and so the field can be genuinely empty rather than "0".
@@ -242,6 +247,9 @@ export function MoneyInput({
   };
 
   const overMax = max !== undefined && value > max;
+  // A correction outranks the advisory ceiling: it is the more specific
+  // thing to say about the number, and both render in the same slot.
+  const showCorrection = !!correction;
 
   return (
     <div className={`${CARD} p-5`}>
@@ -282,7 +290,9 @@ export function MoneyInput({
             "font-display h-14 w-full border-b bg-transparent pl-7 text-[34px] leading-none tracking-wide",
             "text-[#0B2C4A] outline-none transition placeholder:text-[#C2D4E4]",
             suffix ? "pr-24" : "",
-            overMax ? "border-[#E0A23C]" : "border-[#D6E6F5] focus:border-[#0076BE]",
+            overMax || showCorrection
+              ? "border-[#E0A23C]"
+              : "border-[#D6E6F5] focus:border-[#0076BE]",
           ].join(" ")}
         />
         {suffix && (
@@ -291,8 +301,24 @@ export function MoneyInput({
           </span>
         )}
       </div>
-      {overMax && maxMessage && <p className="mt-3 text-[13px] leading-snug text-[#B07419]">{maxMessage}</p>}
-      {hint && !overMax && <p className="mt-3 text-[13px] leading-snug text-[#6B87A3]">{hint}</p>}
+      {showCorrection && (
+        <div className="mt-3 rounded-xl border border-[#F0DCB6] bg-[#FFF9EE] p-3">
+          <p className="text-[13px] leading-snug text-[#8A5A12]">{correction.message}</p>
+          <button
+            type="button"
+            onClick={correction.onUndo}
+            className="mt-2 text-[13px] font-semibold text-[#0076BE] underline underline-offset-2"
+          >
+            {correction.undoLabel}
+          </button>
+        </div>
+      )}
+      {!showCorrection && overMax && maxMessage && (
+        <p className="mt-3 text-[13px] leading-snug text-[#B07419]">{maxMessage}</p>
+      )}
+      {hint && !overMax && !showCorrection && (
+        <p className="mt-3 text-[13px] leading-snug text-[#6B87A3]">{hint}</p>
+      )}
     </div>
   );
 }
